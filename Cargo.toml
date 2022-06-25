@@ -1,0 +1,13 @@
+[package]
+name = "whiz"
+version = "0.0.1"
+edition = "2021"
+description = "Modern DAG/tasks runner."
+
+[dependencies]
+actix = "0.13.0"
+crossterm = "0.23.2"
+hocon = { version = "0.9.0", features = ["serde-support"] }
+notify = "4.0.17"
+serde = { version = "1.0.137", features = ["derive"] }
+tui = "0.18.0"

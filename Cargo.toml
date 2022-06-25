@@ -3,6 +3,7 @@ name = "whiz"
 version = "0.0.1"
 edition = "2021"
 description = "Modern DAG/tasks runner."
+license = "Mozilla Public License 2.0"
 
 [dependencies]
 actix = "0.13.0"

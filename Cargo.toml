@@ -8,7 +8,10 @@ license = "MPL-2.0"
 [dependencies]
 actix = "0.13.0"
 crossterm = "0.23.2"
+duct = "0.13.5"
+globset = "0.4.9"
 hocon = { version = "0.9.0", features = ["serde-support"] }
-notify = "4.0.17"
+ignore = "0.4.18"
+notify = "5.0.0-pre.15"
 serde = { version = "1.0.137", features = ["derive"] }
 tui = "0.18.0"

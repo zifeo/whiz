@@ -1,0 +1,20 @@
+
+
+once {
+    workdir: .
+    watches: .
+    envs {
+        A = world
+    }
+    shell: "echo hello $A"
+}
+
+count {
+    workdir: .
+    watches: .
+    shell: bash -c "for ((i=0; i<10; i=i+1)); do echo $i; sleep 1; done"
+
+    depends_on: [
+        once
+    ]
+}

@@ -5,12 +5,22 @@ use serde::Deserialize;
 
 use std::io;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Lift<T> {
     More(Vec<T>),
     One(T),
     Empty,
+}
+
+impl<T: std::clone::Clone> Lift<T> {
+    pub fn resolve(&self) -> Vec<T> {
+        match self {
+            Lift::More(vs) => vs.clone(),
+            Lift::One(v) => vec![v.clone()],
+            Lift::Empty => vec![],
+        }
+    }
 }
 
 impl<T> Default for Lift<T> {
@@ -19,10 +29,10 @@ impl<T> Default for Lift<T> {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Operator {
     pub workdir: Option<String>,
-    pub shell: Lift<String>,
+    pub shell: String,
 
     #[serde(default)]
     pub watches: Lift<String>,
@@ -40,7 +50,7 @@ pub struct Operator {
 #[derive(Deserialize, Debug)]
 pub struct Config {
     #[serde(flatten)]
-    pub operators: HashMap<String, Operator>,
+    pub ops: HashMap<String, Operator>,
 }
 
 impl Config {

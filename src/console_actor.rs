@@ -1,5 +1,7 @@
 use actix::prelude::*;
+use chrono::prelude::*;
 
+use std::collections::HashMap;
 use std::{cmp::min, collections::VecDeque, io};
 
 use tui::{
@@ -24,26 +26,27 @@ pub struct ConsoleActor {
     console: Terminal<CrosstermBackend<io::Stdout>>,
     index: usize,
     titles: Vec<String>,
-    logs: Vec<VecDeque<String>>,
+    logs: HashMap<String, VecDeque<String>>,
 }
 
 impl ConsoleActor {
-    pub fn new() -> Self {
+    pub fn new(ops: Vec<&String>) -> Self {
         let stdout = io::stdout();
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend).unwrap();
 
         Self {
             console: terminal,
-            titles: vec!["Tab0", "Tab1", "Tab2", "Tab3"]
+            titles: ops
+                .clone()
                 .into_iter()
                 .map(|x| x.to_string())
                 .rev()
                 .collect(),
-            logs: vec!["Tab0", "Tab1", "Tab2", "Tab3"]
+            logs: ops
                 .into_iter()
-                .map(|_| VecDeque::with_capacity(5))
-                .collect(),
+                .map(|op| (op.clone(), VecDeque::with_capacity(5)))
+                .collect::<HashMap<_, _>>(),
             index: 0,
         }
     }
@@ -78,7 +81,13 @@ impl ConsoleActor {
                     .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
                     .split(size);
 
-                let log = Vec::from_iter(self.logs[self.index].clone().into_iter());
+                let log = Vec::from_iter(
+                    self.logs
+                        .get(&self.titles[self.index])
+                        .unwrap()
+                        .clone()
+                        .into_iter(),
+                );
 
                 let from = log.len() - min(chunks[0].height as usize, log.len());
                 let text = log[from..log.len()].to_vec().join("\n");
@@ -184,11 +193,19 @@ impl Handler<TermEvent> for ConsoleActor {
     }
 }
 
-pub struct Output(String);
+pub struct Output {
+    op: String,
+    message: String,
+    timestamp: DateTime<Local>,
+}
 
 impl Output {
-    pub fn new(s: String) -> Self {
-        Self(s)
+    pub fn now(op: String, message: String) -> Self {
+        Self {
+            op,
+            message,
+            timestamp: Local::now(),
+        }
     }
 }
 
@@ -200,7 +217,8 @@ impl Handler<Output> for ConsoleActor {
     type Result = ();
 
     fn handle(&mut self, msg: Output, _: &mut Context<Self>) -> Self::Result {
-        self.logs[0].push_back(msg.0);
+        let logs = self.logs.get_mut(&msg.op).unwrap();
+        logs.push_back(msg.message);
         self.draw();
 
         ()

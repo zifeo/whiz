@@ -7,23 +7,21 @@ use notify::event::ModifyKind;
 use notify::{
     recommended_watcher, Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
 };
+use std::env;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::command_actor::{CommandActor, Reload};
-use crate::console_actor::{ConsoleActor, Output};
 
 pub struct WatcherActor {
     watcher: Option<RecommendedWatcher>,
-    console: Addr<ConsoleActor>,
     globs: Vec<WatchGlob>,
 }
 
 impl WatcherActor {
-    pub fn new(console: Addr<ConsoleActor>) -> Self {
+    pub fn new() -> Self {
         Self {
             watcher: None,
-            console,
             globs: Vec::default(),
         }
     }
@@ -69,7 +67,10 @@ impl Actor for WatcherActor {
         watcher.configure(Config::PreciseEvents(false)).unwrap();
 
         watcher
-            .watch(Path::new("."), RecursiveMode::Recursive)
+            .watch(
+                env::current_dir().unwrap().as_path(),
+                RecursiveMode::Recursive,
+            )
             .unwrap();
 
         self.watcher = Some(watcher);
@@ -79,7 +80,6 @@ impl Actor for WatcherActor {
 #[derive(Clone)]
 pub struct WatchGlob {
     pub command: Addr<CommandActor>,
-    pub op: String,
     pub on: GlobSet,
     pub off: GlobSet,
 }
@@ -107,7 +107,7 @@ impl Handler<WatchEvent> for WatcherActor {
     type Result = ();
 
     fn handle(&mut self, msg: WatchEvent, _: &mut Context<Self>) -> Self::Result {
-        let WatchEvent(event, paths) = msg;
+        let WatchEvent(_, paths) = msg;
         for glob in &self.globs {
             let paths = paths
                 .iter()
@@ -115,18 +115,15 @@ impl Handler<WatchEvent> for WatcherActor {
                 .collect::<Vec<_>>();
 
             if paths.len() > 0 {
-                self.console.do_send(Output::now(
-                    glob.op.clone(),
-                    format!(
-                        "Reloading due to {:}",
-                        paths
-                            .iter()
-                            .map(|p| p.as_path().display().to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                ));
-                glob.command.do_send(Reload)
+                let trigger = format!(
+                    "Reloading due to {:}",
+                    paths
+                        .iter()
+                        .map(|p| p.as_path().display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                glob.command.do_send(Reload::now(trigger))
             }
         }
     }

@@ -1,8 +1,12 @@
 use actix::prelude::*;
 use chrono::prelude::*;
+use indexmap::IndexMap;
 
-use std::collections::HashMap;
-use std::{cmp::min, collections::VecDeque, io};
+use std::{
+    cmp::{max, min},
+    collections::VecDeque,
+    io,
+};
 
 use tui::{
     backend::CrosstermBackend,
@@ -26,7 +30,8 @@ pub struct ConsoleActor {
     console: Terminal<CrosstermBackend<io::Stdout>>,
     index: usize,
     titles: Vec<String>,
-    logs: HashMap<String, VecDeque<String>>,
+    logs: IndexMap<String, VecDeque<String>>,
+    shifts: Vec<usize>,
 }
 
 impl ConsoleActor {
@@ -44,10 +49,12 @@ impl ConsoleActor {
                 .rev()
                 .collect(),
             logs: ops
+                .clone()
                 .into_iter()
-                .map(|op| (op.clone(), VecDeque::with_capacity(5)))
-                .collect::<HashMap<_, _>>(),
+                .map(|op| (op.clone(), VecDeque::default()))
+                .collect::<IndexMap<_, _>>(),
             index: 0,
+            shifts: ops.clone().into_iter().map(|_| 0).collect(),
         }
     }
     pub fn next(&mut self) {
@@ -89,8 +96,12 @@ impl ConsoleActor {
                         .into_iter(),
                 );
 
-                let from = log.len() - min(chunks[0].height as usize, log.len());
-                let text = log[from..log.len()].to_vec().join("\n");
+                let from = max(
+                    log.len() - self.shifts[self.index],
+                    chunks[0].height as usize,
+                ) - chunks[0].height as usize;
+                let to = min(from + chunks[0].height as usize, log.len());
+                let text = log[from..to].to_vec().join("\n");
 
                 let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
                 f.render_widget(paragraph, chunks[0]);
@@ -178,6 +189,18 @@ impl Handler<TermEvent> for ConsoleActor {
                 (_, KeyCode::Left) => {
                     self.previous();
                 }
+                (_, KeyCode::Up) => {
+                    if self.shifts[self.index]
+                        < self.logs.get(&self.titles[self.index]).unwrap().len()
+                    {
+                        self.shifts[self.index] += 1;
+                    }
+                }
+                (_, KeyCode::Down) => {
+                    if self.shifts[self.index] > 1 {
+                        self.shifts[self.index] -= 1;
+                    }
+                }
                 _ => {}
             },
             Event::Resize(_, _) => {}
@@ -196,7 +219,7 @@ impl Handler<TermEvent> for ConsoleActor {
 pub struct Output {
     op: String,
     message: String,
-    timestamp: DateTime<Local>,
+    _timestamp: DateTime<Local>,
 }
 
 impl Output {
@@ -204,7 +227,7 @@ impl Output {
         Self {
             op,
             message,
-            timestamp: Local::now(),
+            _timestamp: Local::now(),
         }
     }
 }

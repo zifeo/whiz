@@ -29,6 +29,7 @@ use crossterm::{
 pub struct ConsoleActor {
     console: Terminal<CrosstermBackend<io::Stdout>>,
     index: usize,
+    arbiter: Arbiter,
     titles: Vec<String>,
     logs: IndexMap<String, VecDeque<String>>,
     shifts: Vec<usize>,
@@ -42,6 +43,7 @@ impl ConsoleActor {
 
         Self {
             console: terminal,
+            arbiter: Arbiter::new(),
             titles: ops
                 .clone()
                 .into_iter()
@@ -145,7 +147,7 @@ impl Actor for ConsoleActor {
         .unwrap();
 
         let addr = ctx.address();
-        Arbiter::new().spawn(async move {
+        self.arbiter.spawn(async move {
             loop {
                 addr.do_send(TermEvent(event::read().unwrap()));
             }
@@ -156,6 +158,7 @@ impl Actor for ConsoleActor {
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
+        self.arbiter.stop();
         self.clean();
 
         execute!(

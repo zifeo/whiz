@@ -45,12 +45,16 @@ impl CommandActor {
         }
     }
 
-    fn reload(&mut self) {
+    fn kill(&mut self) {
         if let Some(mut child) = self.child.take() {
             child.kill().unwrap();
             child.wait().unwrap();
             self.child = None;
         }
+    }
+
+    fn reload(&mut self) {
+        self.kill();
 
         let args = &self.operator.shell;
         let mut envs: HashMap<String, String> = HashMap::new();
@@ -119,11 +123,8 @@ impl Actor for CommandActor {
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        if let Some(mut child) = self.child.take() {
-            child.kill().unwrap();
-            child.wait().unwrap();
-            self.child = None;
-        }
+        self.kill();
+        self.arbiter.stop();
     }
 }
 

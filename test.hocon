@@ -14,7 +14,7 @@ once {
 count {
     workdir: .
     watches: .
-    shell: "for ((i=0; i<10; i=i+1)); do echo $i; sleep 1; done"
+    shell: "$(for ((i=0; i<10; i=i+1)); do echo $i; sleep 1; done)"
 
     depends_on: [
         once

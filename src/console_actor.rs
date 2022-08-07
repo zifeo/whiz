@@ -215,7 +215,7 @@ impl Handler<TermEvent> for ConsoleActor {
         }
         self.draw();
 
-        ()
+        
     }
 }
 
@@ -247,6 +247,6 @@ impl Handler<Output> for ConsoleActor {
         logs.push_back(msg.message);
         self.draw();
 
-        ()
+        
     }
 }

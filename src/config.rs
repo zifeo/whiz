@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::Deserialize;
-use serde_yaml;
+
 use std::fs::File;
 
 #[derive(Deserialize, Debug, Clone)]
@@ -56,7 +56,7 @@ impl Operator {
         let res = match &self.envs {
             None => HashMap::default(),
             Some(kvs) => kvs
-                .into_iter()
+                .iter()
                 .map(|(key, value)| {
                     let hydration = re.captures_iter(value).fold(value.clone(), |agg, c| {
                         agg.replace(&c[1], vars.get(&c[2]).expect("msg"))
@@ -76,7 +76,7 @@ pub struct Config {
     pub ops: IndexMap<String, Operator>,
 }
 
-type DAG = IndexMap<String, Vec<String>>;
+type Dag = IndexMap<String, Vec<String>>;
 
 impl Config {
     pub fn from_file(path: &str) -> Result<Config> {
@@ -85,11 +85,11 @@ impl Config {
         Ok(config)
     }
 
-    pub fn build_dag(&self) -> Result<DAG> {
+    pub fn build_dag(&self) -> Result<Dag> {
         // views
         if let Some(views) = &self.views {
-            for (view_name, op_names) in (views).into_iter() {
-                for op_name in op_names.into_iter() {
+            for (view_name, op_names) in (views).iter() {
+                for op_name in op_names.iter() {
                     if !self.ops.contains_key(op_name) {
                         return Err(anyhow!("{} in view {}", op_name, view_name));
                     }
@@ -113,7 +113,7 @@ impl Config {
         let mut order: Vec<String> = Vec::new();
         let mut poll = Vec::from_iter(self.ops.keys());
 
-        while poll.len() > 0 {
+        while !poll.is_empty() {
             let (satisfied, missing): (Vec<&String>, Vec<&String>) =
                 poll.into_iter().partition(|&item| {
                     self.ops
@@ -125,7 +125,7 @@ impl Config {
                         .all(|p| order.contains(p))
                 });
 
-            if satisfied.len() == 0 {
+            if satisfied.is_empty() {
                 return Err(anyhow!(
                     "cycle detected with one of {}",
                     missing.into_iter().cloned().collect::<Vec<_>>().join(", ")
@@ -148,7 +148,7 @@ impl Config {
                 (item, nexts)
             })
             .rev()
-            .collect::<DAG>();
+            .collect::<Dag>();
         Ok(dag)
     }
 }

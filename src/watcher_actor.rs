@@ -40,14 +40,16 @@ impl Actor for WatcherActor {
             let paths = event
                 .paths
                 .iter()
-                .filter(|path| match gi.matched_path_or_any_parents(path, false) {
-                    Match::Ignore(_) => false,
-                    _ => true,
+                .filter(|path| {
+                    !matches!(
+                        gi.matched_path_or_any_parents(path, false),
+                        Match::Ignore(_)
+                    )
                 })
                 .map(|path| path.to_path_buf())
                 .collect::<Vec<_>>();
 
-            if paths.len() > 0 {
+            if !paths.is_empty() {
                 match event.kind {
                     EventKind::Create(_)
                     | EventKind::Remove(_)
@@ -93,7 +95,6 @@ impl Handler<WatchGlob> for WatcherActor {
 
     fn handle(&mut self, msg: WatchGlob, _: &mut Context<Self>) -> Self::Result {
         self.globs.push(msg);
-        ()
     }
 }
 
@@ -114,7 +115,7 @@ impl Handler<WatchEvent> for WatcherActor {
                 .filter(|path| glob.on.is_match(path) && !glob.off.is_match(path))
                 .collect::<Vec<_>>();
 
-            if paths.len() > 0 {
+            if !paths.is_empty() {
                 let trigger = format!(
                     "Reloading due to {:}",
                     paths

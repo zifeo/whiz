@@ -67,10 +67,10 @@ impl CommandActor {
                 self.operator
                     .workdir
                     .clone()
-                    .map(|p| PathBuf::from(p))
-                    .unwrap_or(env::current_dir().unwrap()),
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| env::current_dir().unwrap()),
             )
-            .args(&vec!["-c", args])
+            .args(&["-c", args])
             .env_extend(&envs.into_iter().collect::<Vec<(String, String)>>())
             .stdout(Redirection::Pipe)
             .stderr(Redirection::Merge)
@@ -162,7 +162,7 @@ impl Handler<Reload> for CommandActor {
             .do_send(Output::now(self.op_name.clone(), msg.trigger.clone()));
 
         self.reload().unwrap();
-        for next in (&self.nexts).into_iter() {
+        for next in (&self.nexts).iter() {
             next.do_send(msg.with_trigger(format!("{} via {}", msg.trigger, self.op_name)));
         }
     }

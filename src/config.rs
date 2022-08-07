@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env};
+use std::{collections::HashMap, env, io};
 
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
@@ -59,7 +59,7 @@ impl Operator {
                 .iter()
                 .map(|(key, value)| {
                     let hydration = re.captures_iter(value).fold(value.clone(), |agg, c| {
-                        agg.replace(&c[1], vars.get(&c[2]).expect("msg"))
+                        agg.replace(&c[1], vars.get(&c[2]).unwrap_or(&"".to_string()))
                     });
                     (key.clone(), hydration)
                 })
@@ -80,7 +80,10 @@ type Dag = IndexMap<String, Vec<String>>;
 
 impl Config {
     pub fn from_file(path: &str) -> Result<Config> {
-        let file = File::open(path)?;
+        let file = File::open(path).map_err(|err| match err.kind() {
+            io::ErrorKind::NotFound => anyhow!("file {} not found", path),
+            _ => anyhow!(err.to_string()),
+        })?;
         let config: Config = serde_yaml::from_reader(file)?;
         Ok(config)
     }

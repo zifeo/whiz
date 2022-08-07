@@ -9,7 +9,8 @@ use crate::{
     watcher_actor::{WatchGlob, WatcherActor},
 };
 use globset::{Glob, GlobSetBuilder};
-use std::{collections::HashMap, env};
+use path_clean::{self, PathClean};
+use std::{collections::HashMap, env, fs, path::Path};
 use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
@@ -24,6 +25,7 @@ pub struct CommandActor {
     child: Option<Popen>,
     nexts: Vec<Addr<CommandActor>>,
     last_run: DateTime<Local>,
+    base_dir: PathBuf,
 }
 
 impl CommandActor {
@@ -33,6 +35,7 @@ impl CommandActor {
         console: Addr<ConsoleActor>,
         watcher: Addr<WatcherActor>,
         nexts: Vec<Addr<CommandActor>>,
+        base_dir: PathBuf,
     ) -> Self {
         Self {
             op_name,
@@ -43,6 +46,7 @@ impl CommandActor {
             child: None,
             nexts,
             last_run: Local::now(),
+            base_dir,
         }
     }
 
@@ -102,14 +106,19 @@ impl Actor for CommandActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
+        let dir = self
+            .base_dir
+            .join(self.operator.workdir.as_ref().unwrap_or(&"".to_string()))
+            .clean();
+
         let mut on = GlobSetBuilder::new();
         for pattern in self.operator.watches.resolve() {
-            on.add(Glob::new(&pattern).unwrap());
+            on.add(Glob::new(&dir.join(&pattern).to_string_lossy()).unwrap());
         }
 
         let mut off = GlobSetBuilder::new();
         for pattern in self.operator.ignores.resolve() {
-            off.add(Glob::new(&pattern).unwrap());
+            off.add(Glob::new(&dir.join(&pattern).to_string_lossy()).unwrap());
         }
 
         let glob = WatchGlob {

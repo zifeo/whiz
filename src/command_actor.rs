@@ -1,4 +1,5 @@
 use actix::prelude::*;
+use anyhow::{Ok, Result};
 use chrono::{DateTime, Local};
 use subprocess::{Exec, Popen, Redirection};
 
@@ -53,15 +54,13 @@ impl CommandActor {
         }
     }
 
-    fn reload(&mut self) {
+    fn reload(&mut self) -> Result<()> {
         self.kill();
 
         let args = &self.operator.shell;
         let mut envs: HashMap<String, String> = HashMap::new();
         envs.extend(env::vars());
-        if let Some(vars) = &self.operator.envs {
-            envs.extend(vars.clone());
-        }
+        envs.extend(self.operator.resolve_envs()?);
 
         let mut p = Exec::cmd("bash")
             .cwd(
@@ -94,6 +93,8 @@ impl CommandActor {
 
         self.last_run = Local::now();
         self.arbiter.spawn(fut);
+
+        Ok(())
     }
 }
 
@@ -119,7 +120,7 @@ impl Actor for CommandActor {
 
         self.watcher.do_send(glob);
 
-        self.reload();
+        self.reload().unwrap();
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
@@ -160,7 +161,7 @@ impl Handler<Reload> for CommandActor {
         self.console
             .do_send(Output::now(self.op_name.clone(), msg.trigger.clone()));
 
-        self.reload();
+        self.reload().unwrap();
         for next in (&self.nexts).into_iter() {
             next.do_send(msg.with_trigger(format!("{} via {}", msg.trigger, self.op_name)));
         }

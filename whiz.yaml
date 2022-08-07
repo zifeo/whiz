@@ -1,0 +1,33 @@
+speedy:
+    shell: "for ((i=0; i<50; i=i+1)); do echo $i; done"
+
+once:
+    workdir: .
+    watches: "*"
+    envs:
+        A: world
+    shell: "echo hello $A"
+
+count:
+    workdir: .
+    watches: .
+    shell: "for ((i=0; i<10; i=i+1)); do echo $TEST-$i; sleep 1; done"
+    envs:
+        TEST: "$PWD $HOME"
+
+    depends_on:
+        - once
+
+dodo:
+    workdir: .
+    watches: target
+    shell: "sleep 30"
+
+    depends_on:
+        - count
+        - once
+
+views:
+    mixed:
+        - once
+        - count

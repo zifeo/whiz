@@ -14,7 +14,7 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, value_parser, default_value = "whiz.hocon")]
+    #[clap(short, long, value_parser, default_value = "whiz.yaml")]
     file: String,
 }
 

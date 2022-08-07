@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, env};
 
-use hocon::HoconLoader;
+use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
+use regex::Regex;
 use serde::Deserialize;
-
-use simple_error::SimpleError;
+use serde_yaml;
+use std::fs::File;
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -48,6 +49,26 @@ pub struct Operator {
     pub depends_on: Lift<String>,
 }
 
+impl Operator {
+    pub fn resolve_envs(&self) -> Result<HashMap<String, String>> {
+        let re = Regex::new(r"(\$\{?(\w+)\}?)")?;
+        let vars: HashMap<String, String> = HashMap::from_iter(env::vars());
+        let res = match &self.envs {
+            None => HashMap::default(),
+            Some(kvs) => kvs
+                .into_iter()
+                .map(|(key, value)| {
+                    let hydration = re.captures_iter(value).fold(value.clone(), |agg, c| {
+                        agg.replace(&c[1], vars.get(&c[2]).expect("msg"))
+                    });
+                    (key.clone(), hydration)
+                })
+                .collect::<HashMap<_, _>>(),
+        };
+        Ok(res)
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub views: Option<HashMap<String, Vec<String>>>,
@@ -58,24 +79,19 @@ pub struct Config {
 type DAG = IndexMap<String, Vec<String>>;
 
 impl Config {
-    pub fn from_file(path: &str) -> std::result::Result<Config, SimpleError> {
-        HoconLoader::new()
-            .load_file(path)
-            .expect("")
-            .resolve()
-            .map_err(SimpleError::from)
+    pub fn from_file(path: &str) -> Result<Config> {
+        let file = File::open(path)?;
+        let config: Config = serde_yaml::from_reader(file)?;
+        Ok(config)
     }
 
-    pub fn build_dag(&self) -> std::result::Result<DAG, SimpleError> {
+    pub fn build_dag(&self) -> Result<DAG> {
         // views
         if let Some(views) = &self.views {
             for (view_name, op_names) in (views).into_iter() {
                 for op_name in op_names.into_iter() {
                     if !self.ops.contains_key(op_name) {
-                        return Err(SimpleError::new(format!(
-                            "{} in view {}",
-                            op_name, view_name
-                        )));
+                        return Err(anyhow!("{} in view {}", op_name, view_name));
                     }
                 }
             }
@@ -85,17 +101,11 @@ impl Config {
         for (op_name, ops) in (&self.ops).into_iter() {
             for dep_op_name in ops.depends_on.resolve().into_iter() {
                 if op_name == &dep_op_name {
-                    return Err(SimpleError::new(format!(
-                        "dependency cannot be recursive in {}",
-                        op_name
-                    )));
+                    return Err(anyhow!("dependency cannot be recursive in {}", op_name));
                 }
 
                 if !self.ops.contains_key(&dep_op_name) {
-                    return Err(SimpleError::new(format!(
-                        "{} in op {}",
-                        dep_op_name, op_name
-                    )));
+                    return Err(anyhow!("{} in op {}", dep_op_name, op_name));
                 }
             }
         }
@@ -116,10 +126,10 @@ impl Config {
                 });
 
             if satisfied.len() == 0 {
-                return Err(SimpleError::new(format!(
+                return Err(anyhow!(
                     "cycle detected with one of {}",
                     missing.into_iter().cloned().collect::<Vec<_>>().join(", ")
-                )));
+                ));
             }
 
             order.extend(satisfied.into_iter().cloned().collect::<Vec<_>>());

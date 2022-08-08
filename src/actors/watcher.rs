@@ -11,7 +11,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::command_actor::{CommandActor, Reload};
+use super::command::{CommandActor, Reload};
 
 pub struct WatcherActor {
     watcher: Option<RecommendedWatcher>,
@@ -117,7 +117,7 @@ impl Handler<WatchEvent> for WatcherActor {
 
             if !paths.is_empty() {
                 let trigger = format!(
-                    "Reloading due to {:}",
+                    "Reloading due to {}",
                     paths
                         .iter()
                         .map(|p| p.as_path().display().to_string())

@@ -76,7 +76,7 @@ pub struct Config {
     pub ops: IndexMap<String, Operator>,
 }
 
-type Dag = IndexMap<String, Vec<String>>;
+pub type Dag = IndexMap<String, Vec<String>>;
 
 impl Config {
     pub fn from_file(path: &str) -> Result<Config> {

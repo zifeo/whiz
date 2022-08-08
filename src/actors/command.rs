@@ -3,18 +3,17 @@ use anyhow::{Ok, Result};
 use chrono::{DateTime, Local};
 use subprocess::{Exec, Popen, Redirection};
 
-use crate::{
-    config::Operator,
-    console_actor::{ConsoleActor, Output},
-    watcher_actor::{WatchGlob, WatcherActor},
-};
+use crate::config::Operator;
 use globset::{Glob, GlobSetBuilder};
 use path_clean::{self, PathClean};
-use std::{collections::HashMap, env, fs, path::Path};
+use std::{collections::HashMap, env, time::Duration};
 use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
 };
+
+use super::console::{ConsoleActor, Output, Register};
+use super::watcher::{WatchGlob, WatcherActor};
 
 pub struct CommandActor {
     op_name: String,
@@ -50,16 +49,21 @@ impl CommandActor {
         }
     }
 
-    fn kill(&mut self) {
+    fn kill(&mut self) -> Result<()> {
         if let Some(mut child) = self.child.take() {
-            child.kill().unwrap();
-            child.wait().unwrap();
+            self.console
+                .do_send(Output::now(self.op_name.clone(), "killing".to_string()));
+            child.terminate()?;
+            child.wait_timeout(Duration::from_millis(100))?;
+            child.kill()?;
+            child.wait()?;
             self.child = None;
         }
+        Ok(())
     }
 
     fn reload(&mut self) -> Result<()> {
-        self.kill();
+        self.kill()?;
 
         let args = &self.operator.shell;
         let mut envs: HashMap<String, String> = HashMap::new();
@@ -106,6 +110,11 @@ impl Actor for CommandActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
+        self.console.do_send(Register {
+            title: self.op_name.clone(),
+            addr: ctx.address(),
+        });
+
         let dir = self
             .base_dir
             .join(self.operator.workdir.as_ref().unwrap_or(&"".to_string()))
@@ -133,8 +142,7 @@ impl Actor for CommandActor {
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        self.kill();
-        self.arbiter.stop();
+        self.kill().unwrap()
     }
 }
 
@@ -174,5 +182,19 @@ impl Handler<Reload> for CommandActor {
         for next in (&self.nexts).iter() {
             next.do_send(msg.with_trigger(format!("{} via {}", msg.trigger, self.op_name)));
         }
+    }
+}
+
+pub struct PoisonPill;
+
+impl Message for PoisonPill {
+    type Result = ();
+}
+
+impl Handler<PoisonPill> for CommandActor {
+    type Result = ();
+
+    fn handle(&mut self, _: PoisonPill, ctx: &mut Context<Self>) -> Self::Result {
+        ctx.stop();
     }
 }

@@ -1,10 +1,9 @@
 use actix::prelude::*;
 use chrono::prelude::*;
-use indexmap::IndexMap;
 
 use std::{
     cmp::{max, min},
-    collections::VecDeque,
+    collections::HashMap,
     io,
 };
 
@@ -26,49 +25,60 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
+use super::command::{CommandActor, PoisonPill};
+
+pub struct Panel {
+    logs: Vec<String>,
+    shift: usize,
+    command: Addr<CommandActor>,
+}
+
+impl Panel {
+    pub fn new(command: Addr<CommandActor>) -> Self {
+        Self {
+            logs: Vec::default(),
+            shift: 0,
+            command,
+        }
+    }
+}
+
 pub struct ConsoleActor {
     console: Terminal<CrosstermBackend<io::Stdout>>,
-    index: usize,
+    index: String,
+    order: Vec<String>,
     arbiter: Arbiter,
-    titles: Vec<String>,
-    logs: IndexMap<String, VecDeque<String>>,
-    shifts: Vec<usize>,
+    panels: HashMap<String, Panel>,
 }
 
 impl ConsoleActor {
-    pub fn new(ops: Vec<&String>) -> Self {
+    pub fn new(order: Vec<String>) -> Self {
         let stdout = io::stdout();
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend).unwrap();
 
         Self {
             console: terminal,
+            index: order[0].clone(),
+            order,
             arbiter: Arbiter::new(),
-            titles: ops
-                .clone()
-                .into_iter()
-                .map(|x| x.to_string())
-                .rev()
-                .collect(),
-            logs: ops
-                .clone()
-                .into_iter()
-                .map(|op| (op.clone(), VecDeque::default()))
-                .collect::<IndexMap<_, _>>(),
-            index: 0,
-            shifts: ops.clone().into_iter().map(|_| 0).collect(),
+            panels: HashMap::default(),
         }
     }
+
+    pub fn idx(&self) -> usize {
+        self.order
+            .iter()
+            .position(|e| e == &self.index)
+            .unwrap_or(0)
+    }
+
     pub fn next(&mut self) {
-        self.index = (self.index + 1) % self.titles.len();
+        self.index = self.order[(self.idx() + 1) % self.order.len()].clone();
     }
 
     pub fn previous(&mut self) {
-        if self.index > 0 {
-            self.index -= 1;
-        } else {
-            self.index = self.titles.len() - 1;
-        }
+        self.index = self.order[(self.idx() + self.order.len() - 1) % self.order.len()].clone();
     }
 
     fn clean(&mut self) {
@@ -82,54 +92,48 @@ impl ConsoleActor {
     }
 
     fn draw(&mut self) {
-        self.console
-            .draw(|f| {
-                let size = f.size();
-                let chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
-                    .split(size);
+        let idx = self.idx();
+        if let Some(focus) = &self.panels.get(&self.index) {
+            self.console
+                .draw(|f| {
+                    let size = f.size();
+                    let chunks = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
+                        .split(size);
 
-                let log = Vec::from_iter(
-                    self.logs
-                        .get(&self.titles[self.index])
-                        .unwrap()
-                        .clone()
-                        .into_iter(),
-                );
+                    let logs = &focus.logs;
+                    let from = max(logs.len() - focus.shift, chunks[0].height as usize)
+                        - chunks[0].height as usize;
+                    let to = min(from + chunks[0].height as usize, logs.len());
+                    let text = logs[from..to].join("\n");
 
-                let from = max(
-                    log.len() - self.shifts[self.index],
-                    chunks[0].height as usize,
-                ) - chunks[0].height as usize;
-                let to = min(from + chunks[0].height as usize, log.len());
-                let text = log[from..to].to_vec().join("\n");
+                    let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
+                    f.render_widget(paragraph, chunks[0]);
 
-                let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
-                f.render_widget(paragraph, chunks[0]);
-
-                let titles = self
-                    .titles
-                    .iter()
-                    .map(|t| {
-                        let (first, rest) = t.split_at(1);
-                        Spans::from(vec![
-                            Span::styled(first, Style::default().fg(Color::Yellow)),
-                            Span::styled(rest, Style::default().fg(Color::Green)),
-                        ])
-                    })
-                    .collect();
-                let tabs = Tabs::new(titles)
-                    .block(Block::default().borders(Borders::ALL))
-                    .select(self.index)
-                    .highlight_style(
-                        Style::default()
-                            .add_modifier(Modifier::BOLD)
-                            .bg(Color::Black),
-                    );
-                f.render_widget(tabs, chunks[1]);
-            })
-            .unwrap();
+                    let titles = self
+                        .order
+                        .iter()
+                        .map(|panel| {
+                            let (first, rest) = panel.split_at(1);
+                            Spans::from(vec![
+                                Span::styled(first, Style::default().fg(Color::Yellow)),
+                                Span::styled(rest, Style::default().fg(Color::Green)),
+                            ])
+                        })
+                        .collect();
+                    let tabs = Tabs::new(titles)
+                        .block(Block::default().borders(Borders::ALL))
+                        .select(idx)
+                        .highlight_style(
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .bg(Color::Black),
+                        );
+                    f.render_widget(tabs, chunks[1]);
+                })
+                .unwrap();
+        }
     }
 }
 
@@ -184,6 +188,9 @@ impl Handler<TermEvent> for ConsoleActor {
         match msg.0 {
             Event::Key(e) => match (e.modifiers, e.code) {
                 (KeyModifiers::CONTROL, KeyCode::Char('c')) | (_, KeyCode::Char('q')) => {
+                    self.panels
+                        .values()
+                        .for_each(|e| e.command.do_send(PoisonPill));
                     System::current().stop();
                 }
                 (_, KeyCode::Right) => {
@@ -193,15 +200,17 @@ impl Handler<TermEvent> for ConsoleActor {
                     self.previous();
                 }
                 (_, KeyCode::Up) => {
-                    if self.shifts[self.index]
-                        < self.logs.get(&self.titles[self.index]).unwrap().len()
-                    {
-                        self.shifts[self.index] += 1;
+                    if let Some(focus) = self.panels.get_mut(&self.index) {
+                        if focus.shift < focus.logs.len() {
+                            focus.shift += 1;
+                        }
                     }
                 }
                 (_, KeyCode::Down) => {
-                    if self.shifts[self.index] > 1 {
-                        self.shifts[self.index] -= 1;
+                    if let Some(focus) = self.panels.get_mut(&self.index) {
+                        if focus.shift > 1 {
+                            focus.shift -= 1;
+                        }
                     }
                 }
                 _ => {}
@@ -214,8 +223,6 @@ impl Handler<TermEvent> for ConsoleActor {
             },
         }
         self.draw();
-
-        
     }
 }
 
@@ -243,10 +250,26 @@ impl Handler<Output> for ConsoleActor {
     type Result = ();
 
     fn handle(&mut self, msg: Output, _: &mut Context<Self>) -> Self::Result {
-        let logs = self.logs.get_mut(&msg.op).unwrap();
-        logs.push_back(msg.message);
+        let focus = self.panels.get_mut(&msg.op).unwrap();
+        focus.logs.push(msg.message);
         self.draw();
+    }
+}
 
-        
+pub struct Register {
+    pub title: String,
+    pub addr: Addr<CommandActor>,
+}
+
+impl Message for Register {
+    type Result = ();
+}
+
+impl Handler<Register> for ConsoleActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: Register, _: &mut Context<Self>) -> Self::Result {
+        self.panels.insert(msg.title.clone(), Panel::new(msg.addr));
+        self.draw();
     }
 }

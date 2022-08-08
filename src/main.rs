@@ -1,16 +1,16 @@
 use actix::prelude::*;
-use command_actor::CommandActor;
+use actors::command::CommandActor;
+use actors::console::ConsoleActor;
+use actors::watcher::WatcherActor;
+use config::Config;
 
 use std::collections::HashMap;
-use std::error::Error;
-use std::{env, io};
-mod command_actor;
+
+use std::env;
+mod actors;
 mod config;
-mod console_actor;
-mod watcher_actor;
 use anyhow::Result;
-use std::fs;
-use std::path::{Path, PathBuf};
+
 use std::process;
 
 use clap::Parser;
@@ -25,7 +25,7 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let conf = match config::Config::from_file(&args.file) {
+    let config = match Config::from_file(&args.file) {
         Ok(conf) => conf,
         Err(err) => {
             println!("file error: {}", err);
@@ -33,7 +33,7 @@ fn main() -> Result<()> {
         }
     };
 
-    let dag = match conf.build_dag() {
+    let dag = match config.build_dag() {
         Ok(conf) => conf,
         Err(err) => {
             println!("config error: {}", err);
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
         }
     };
 
-    let working_dir = env::current_dir()?
+    let base_dir = env::current_dir()?
         .join(args.file)
         .parent()
         .unwrap()
@@ -50,24 +50,24 @@ fn main() -> Result<()> {
     let system = System::new();
     let exec = async move {
         let console =
-            console_actor::ConsoleActor::new(Vec::from_iter(conf.ops.keys().rev())).start();
-        let watcher = watcher_actor::WatcherActor::new().start();
+            ConsoleActor::new(Vec::from_iter(config.ops.keys().map(|e| e.clone()))).start();
+        let watcher = WatcherActor::new().start();
 
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
 
         for (op_name, nexts) in dag.into_iter() {
-            let op = conf.ops.get(&op_name).unwrap();
+            let op = config.ops.get(&op_name).unwrap();
 
-            let actor = command_actor::CommandActor::new(
+            let actor = CommandActor::new(
                 op_name.clone(),
                 op.clone(),
                 console.clone(),
                 watcher.clone(),
                 nexts
                     .iter()
-                    .map(|e| commands.get(e).expect("who").clone())
+                    .map(|e| commands.get(e).unwrap().clone())
                     .collect(),
-                working_dir.clone(),
+                base_dir.clone(),
             )
             .start();
             commands.insert(op_name, actor);

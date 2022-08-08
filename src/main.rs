@@ -49,8 +49,7 @@ fn main() -> Result<()> {
 
     let system = System::new();
     let exec = async move {
-        let console =
-            ConsoleActor::new(Vec::from_iter(config.ops.keys().map(|e| e.clone()))).start();
+        let console = ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned())).start();
         let watcher = WatcherActor::new().start();
 
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();

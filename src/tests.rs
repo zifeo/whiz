@@ -38,12 +38,11 @@ macro_rules! mock_actor {
 #[test]
 fn hello() -> Result<()> {
     within_system(async move {
-        let config = Config::from_str(
-            r#"
+        let config: Config = r#"
             test:
                 shell: ls
-            "#,
-        )?;
+            "#
+        .parse()?;
 
         let console = mock_actor!(ConsoleActor, {
             msg: Output => {

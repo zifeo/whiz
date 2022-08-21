@@ -44,7 +44,7 @@ fn main() -> Result<()> {
     let exec = async move {
         let console = ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned())).start();
         let watcher = WatcherActor::new().start();
-        CommandActor::from_config(&config, console.clone(), watcher.clone(), base_dir.clone());
+        CommandActor::from_config(&config, console, watcher, base_dir.clone());
     };
 
     Arbiter::current().spawn(exec);

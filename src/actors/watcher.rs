@@ -27,6 +27,12 @@ impl WatcherActor {
     }
 }
 
+impl Default for WatcherActor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Actor for WatcherActor {
     type Context = Context<Self>;
 

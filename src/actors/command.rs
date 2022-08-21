@@ -1,9 +1,9 @@
 use actix::prelude::*;
+
 use anyhow::{Ok, Result};
 use chrono::{DateTime, Local};
 use subprocess::{Exec, Popen, Redirection};
 
-use crate::config::Operator;
 use globset::{Glob, GlobSetBuilder};
 use path_clean::{self, PathClean};
 use std::{collections::HashMap, env, time::Duration};
@@ -12,14 +12,36 @@ use std::{
     path::PathBuf,
 };
 
-use super::console::{ConsoleActor, Output, Register};
-use super::watcher::{WatchGlob, WatcherActor};
+use crate::config::Config;
+use crate::config::Operator;
+
+use super::console::{Output, Register};
+use super::watcher::WatchGlob;
+
+#[cfg(not(test))]
+mod prelude {
+    use crate::actors::{console::ConsoleActor, watcher::WatcherActor};
+
+    pub type WatcherAct = WatcherActor;
+    pub type ConsoleAct = ConsoleActor;
+}
+
+#[cfg(test)]
+mod prelude {
+    use crate::actors::{console::ConsoleActor, watcher::WatcherActor};
+    use actix::actors::mocker::Mocker;
+
+    pub type WatcherAct = Mocker<WatcherActor>;
+    pub type ConsoleAct = Mocker<ConsoleActor>;
+}
+
+use prelude::*;
 
 pub struct CommandActor {
     op_name: String,
     operator: Operator,
-    console: Addr<ConsoleActor>,
-    watcher: Addr<WatcherActor>,
+    console: Addr<ConsoleAct>,
+    watcher: Addr<WatcherAct>,
     arbiter: Arbiter,
     child: Option<Popen>,
     nexts: Vec<Addr<CommandActor>>,
@@ -28,11 +50,44 @@ pub struct CommandActor {
 }
 
 impl CommandActor {
+    pub fn from_config(
+        config: &Config,
+        console: Addr<ConsoleAct>,
+        watcher: Addr<WatcherAct>,
+        base_dir: PathBuf,
+    ) -> Vec<Addr<CommandActor>> {
+        let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
+
+        for (op_name, nexts) in config.build_dag().unwrap().into_iter() {
+            let op = config.ops.get(&op_name).unwrap();
+
+            let actor = CommandActor::new(
+                op_name.clone(),
+                op.clone(),
+                console.clone(),
+                watcher.clone(),
+                nexts
+                    .iter()
+                    .map(|e| commands.get(e).unwrap().clone())
+                    .collect(),
+                base_dir.clone(),
+            )
+            .start();
+            commands.insert(op_name, actor);
+        }
+
+        commands
+            .values()
+            .into_iter()
+            .map(|i| i.to_owned())
+            .collect::<Vec<_>>()
+    }
+
     pub fn new(
         op_name: String,
         operator: Operator,
-        console: Addr<ConsoleActor>,
-        watcher: Addr<WatcherActor>,
+        console: Addr<ConsoleAct>,
+        watcher: Addr<WatcherAct>,
         nexts: Vec<Addr<CommandActor>>,
         base_dir: PathBuf,
     ) -> Self {

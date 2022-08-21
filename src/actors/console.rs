@@ -44,7 +44,7 @@ impl Panel {
 }
 
 pub struct ConsoleActor {
-    console: Terminal<CrosstermBackend<io::Stdout>>,
+    terminal: Terminal<CrosstermBackend<io::Stdout>>,
     index: String,
     order: Vec<String>,
     arbiter: Arbiter,
@@ -56,9 +56,8 @@ impl ConsoleActor {
         let stdout = io::stdout();
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend).unwrap();
-
         Self {
-            console: terminal,
+            terminal,
             index: order[0].clone(),
             order,
             arbiter: Arbiter::new(),
@@ -82,7 +81,7 @@ impl ConsoleActor {
     }
 
     fn clean(&mut self) {
-        self.console
+        self.terminal
             .draw(|f| {
                 let clean =
                     Block::default().style(Style::default().bg(Color::White).fg(Color::Black));
@@ -94,7 +93,7 @@ impl ConsoleActor {
     fn draw(&mut self) {
         let idx = self.idx();
         if let Some(focus) = &self.panels.get(&self.index) {
-            self.console
+            self.terminal
                 .draw(|f| {
                     let size = f.size();
                     let chunks = Layout::default()
@@ -143,7 +142,7 @@ impl Actor for ConsoleActor {
     fn started(&mut self, ctx: &mut Context<Self>) {
         enable_raw_mode().unwrap();
         execute!(
-            self.console.backend_mut(),
+            self.terminal.backend_mut(),
             cursor::Hide,
             EnableMouseCapture,
             EnterAlternateScreen,
@@ -166,7 +165,7 @@ impl Actor for ConsoleActor {
         self.clean();
 
         execute!(
-            self.console.backend_mut(),
+            self.terminal.backend_mut(),
             LeaveAlternateScreen,
             DisableMouseCapture,
             cursor::Show,
@@ -175,7 +174,7 @@ impl Actor for ConsoleActor {
         disable_raw_mode().unwrap();
     }
 }
-struct TermEvent(Event);
+pub struct TermEvent(Event);
 
 impl Message for TermEvent {
     type Result = ();
@@ -221,6 +220,9 @@ impl Handler<TermEvent> for ConsoleActor {
                 MouseEventKind::ScrollDown => {}
                 _ => {}
             },
+            Event::FocusGained => {}
+            Event::FocusLost => {}
+            Event::Paste(_) => {}
         }
         self.draw();
     }
@@ -228,7 +230,7 @@ impl Handler<TermEvent> for ConsoleActor {
 
 pub struct Output {
     op: String,
-    message: String,
+    pub message: String,
     _timestamp: DateTime<Local>,
 }
 

@@ -79,6 +79,11 @@ pub struct Config {
 pub type Dag = IndexMap<String, Vec<String>>;
 
 impl Config {
+    pub fn from_str(content: &str) -> Result<Config> {
+        let config: Config = serde_yaml::from_str(content)?;
+        Ok(config)
+    }
+
     pub fn from_file(path: &str) -> Result<Config> {
         let file = File::open(path).map_err(|err| match err.kind() {
             io::ErrorKind::NotFound => anyhow!("file {} not found", path),

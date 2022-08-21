@@ -48,6 +48,7 @@ pub struct CommandActor {
     nexts: Vec<Addr<CommandActor>>,
     last_run: DateTime<Local>,
     base_dir: PathBuf,
+    self_addr: Option<Addr<CommandActor>>,
 }
 
 impl CommandActor {
@@ -102,17 +103,23 @@ impl CommandActor {
             nexts,
             last_run: Local::now(),
             base_dir,
+            self_addr: None,
         }
     }
 
     fn kill(&mut self) -> Result<()> {
         if let Some(mut child) = self.child.take() {
-            self.console
-                .do_send(Output::now(self.op_name.clone(), "killing".to_string()));
-            child.terminate()?;
-            child.wait_timeout(Duration::from_millis(100))?;
-            child.kill()?;
-            child.wait()?;
+            if child.poll().is_none() {
+                child.terminate()?;
+                child.wait_timeout(Duration::from_millis(100))?;
+
+                if child.poll().is_none() {
+                    self.console
+                        .do_send(Output::now(self.op_name.clone(), "terminating".to_string()));
+                    child.kill()?;
+                    child.wait()?;
+                }
+            }
             self.child = None;
         }
         Ok(())
@@ -146,11 +153,14 @@ impl CommandActor {
 
         let console = self.console.clone();
         let op_name = self.op_name.clone();
+        let self_addr = self.self_addr.clone();
         let fut = async move {
             for line in reader.lines() {
                 console.do_send(Output::now(op_name.clone(), line.unwrap()));
             }
-            console.do_send(Output::now(op_name, "out".to_string()));
+            if let Some(addr) = self_addr {
+                addr.do_send(StdoutTerminated);
+            }
         };
 
         self.child = Some(p);
@@ -179,9 +189,12 @@ impl Actor for CommandActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
+        let addr = ctx.address();
+        self.self_addr = Some(addr.clone());
+
         self.console.do_send(Register {
             title: self.op_name.clone(),
-            addr: ctx.address(),
+            addr,
         });
 
         let dir = self
@@ -215,7 +228,8 @@ impl Actor for CommandActor {
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        self.kill().unwrap()
+        self.self_addr = None;
+        self.kill().unwrap();
     }
 }
 
@@ -253,7 +267,7 @@ impl Handler<Reload> for CommandActor {
 
         self.reload().unwrap();
         for next in (&self.nexts).iter() {
-            next.do_send(msg.with_trigger(format!("{} via {}", msg.trigger, self.op_name)));
+            next.do_send(msg.with_trigger(format!("{} via {}", self.op_name, msg.trigger)));
         }
     }
 }
@@ -279,12 +293,12 @@ impl Handler<GetStatus> for CommandActor {
 
 #[derive(Message)]
 #[rtype(result = "Result<Status, std::io::Error>")]
-pub struct PollStatus;
+pub struct WaitStatus;
 
-impl Handler<PollStatus> for CommandActor {
+impl Handler<WaitStatus> for CommandActor {
     type Result = ResponseActFuture<Self, Result<Status, std::io::Error>>;
 
-    fn handle(&mut self, _: PollStatus, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: WaitStatus, ctx: &mut Self::Context) -> Self::Result {
         let addr = ctx.address();
         let f = async move {
             loop {
@@ -298,6 +312,22 @@ impl Handler<PollStatus> for CommandActor {
         .into_actor(self)
         .map(|res, _act, _ctx| Ok(res));
         Box::pin(f)
+    }
+}
+#[derive(Message)]
+#[rtype(result = "()")]
+struct StdoutTerminated;
+
+impl Handler<StdoutTerminated> for CommandActor {
+    type Result = ();
+
+    fn handle(&mut self, _: StdoutTerminated, _: &mut Self::Context) -> Self::Result {
+        let c = self
+            .exit_code()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "?".to_string());
+        self.console
+            .do_send(Output::now(self.op_name.clone(), format!("exited ({})", c)));
     }
 }
 

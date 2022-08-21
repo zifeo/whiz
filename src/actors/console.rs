@@ -25,7 +25,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
-use super::command::{CommandActor, PoisonPill};
+use super::command::{CommandActor, PoisonPill, Reload};
 
 pub struct Panel {
     logs: Vec<String>,
@@ -191,6 +191,13 @@ impl Handler<TermEvent> for ConsoleActor {
                         .values()
                         .for_each(|e| e.command.do_send(PoisonPill));
                     System::current().stop();
+                }
+                (_, KeyCode::Char('r')) => {
+                    if let Some(focus) = self.panels.get(&self.index) {
+                        focus
+                            .command
+                            .do_send(Reload::now("manual reloading".to_string()));
+                    }
                 }
                 (_, KeyCode::Right) => {
                     self.next();

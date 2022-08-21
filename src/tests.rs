@@ -2,7 +2,7 @@ use std::{env, future::Future};
 
 use anyhow::{Ok, Result};
 
-use crate::actors::command::{PollStatus, Status};
+use crate::actors::command::{Status, WaitStatus};
 use crate::actors::console::Register;
 use crate::actors::watcher::WatchGlob;
 use crate::{
@@ -67,7 +67,7 @@ fn hello() {
         let commands =
             CommandActor::from_config(&config, console, watcher, env::current_dir().unwrap());
 
-        let status = commands[0].send(PollStatus).await?;
+        let status = commands[0].send(WaitStatus).await?;
         println!("status: {:?}", status);
 
         Ok(())

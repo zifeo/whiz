@@ -1,8 +1,9 @@
+use actix::clock::sleep;
 use actix::prelude::*;
 
-use anyhow::{Ok, Result};
+use anyhow::Result;
 use chrono::{DateTime, Local};
-use subprocess::{Exec, Popen, Redirection};
+use subprocess::{Exec, ExitStatus, Popen, Redirection};
 
 use globset::{Glob, GlobSetBuilder};
 use path_clean::{self, PathClean};
@@ -159,6 +160,19 @@ impl CommandActor {
 
         Ok(())
     }
+
+    fn exit_code(&mut self) -> Option<i32> {
+        match &mut self.child {
+            None => None,
+            Some(p) => p.poll().map(|c| match c {
+                ExitStatus::Exited(c) => Some(c as i32),
+                ExitStatus::Other(c) => Some(c),
+                ExitStatus::Signaled(c) => Some(c as i32),
+                ExitStatus::Undetermined => None,
+            }),
+        }
+        .flatten()
+    }
 }
 
 impl Actor for CommandActor {
@@ -175,23 +189,27 @@ impl Actor for CommandActor {
             .join(self.operator.workdir.as_ref().unwrap_or(&"".to_string()))
             .clean();
 
-        let mut on = GlobSetBuilder::new();
-        for pattern in self.operator.watches.resolve() {
-            on.add(Glob::new(&dir.join(&pattern).to_string_lossy()).unwrap());
+        let watches = self.operator.watches.resolve();
+
+        if !watches.is_empty() {
+            let mut on = GlobSetBuilder::new();
+            for pattern in self.operator.watches.resolve() {
+                on.add(Glob::new(&dir.join(&pattern).to_string_lossy()).unwrap());
+            }
+
+            let mut off = GlobSetBuilder::new();
+            for pattern in self.operator.ignores.resolve() {
+                off.add(Glob::new(&dir.join(&pattern).to_string_lossy()).unwrap());
+            }
+
+            let glob = WatchGlob {
+                command: ctx.address(),
+                on: on.build().unwrap(),
+                off: off.build().unwrap(),
+            };
+
+            self.watcher.do_send(glob);
         }
-
-        let mut off = GlobSetBuilder::new();
-        for pattern in self.operator.ignores.resolve() {
-            off.add(Glob::new(&dir.join(&pattern).to_string_lossy()).unwrap());
-        }
-
-        let glob = WatchGlob {
-            command: ctx.address(),
-            on: on.build().unwrap(),
-            off: off.build().unwrap(),
-        };
-
-        self.watcher.do_send(glob);
 
         self.reload().unwrap();
     }
@@ -237,6 +255,49 @@ impl Handler<Reload> for CommandActor {
         for next in (&self.nexts).iter() {
             next.do_send(msg.with_trigger(format!("{} via {}", msg.trigger, self.op_name)));
         }
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<Status, std::io::Error>")]
+pub struct GetStatus;
+
+#[derive(Debug)]
+pub struct Status {
+    pub exit_code: Option<i32>,
+}
+
+impl Handler<GetStatus> for CommandActor {
+    type Result = Result<Status, std::io::Error>;
+
+    fn handle(&mut self, _: GetStatus, _: &mut Self::Context) -> Self::Result {
+        Ok(Status {
+            exit_code: self.exit_code(),
+        })
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<Status, std::io::Error>")]
+pub struct PollStatus;
+
+impl Handler<PollStatus> for CommandActor {
+    type Result = ResponseActFuture<Self, Result<Status, std::io::Error>>;
+
+    fn handle(&mut self, _: PollStatus, ctx: &mut Self::Context) -> Self::Result {
+        let addr = ctx.address();
+        let f = async move {
+            loop {
+                let status = addr.send(GetStatus).await.unwrap().unwrap();
+                if status.exit_code.is_some() {
+                    return status;
+                }
+                sleep(Duration::from_millis(20)).await;
+            }
+        }
+        .into_actor(self)
+        .map(|res, _act, _ctx| Ok(res));
+        Box::pin(f)
     }
 }
 

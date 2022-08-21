@@ -2,8 +2,9 @@ use std::{env, future::Future};
 
 use anyhow::{Ok, Result};
 
-use actix::{actors::mocker::Mocker, prelude::*};
-
+use crate::actors::command::{PollStatus, Status};
+use crate::actors::console::Register;
+use crate::actors::watcher::WatchGlob;
 use crate::{
     actors::{
         command::CommandActor,
@@ -12,6 +13,7 @@ use crate::{
     },
     config::Config,
 };
+use actix::{actors::mocker::Mocker, prelude::*};
 
 fn within_system<F: Future<Output = Result<()>>>(f: F) {
     let system = System::new();
@@ -29,14 +31,15 @@ macro_rules! mock_actor {
                 } else
             )*
             {
-                Box::new(Option::<()>::None)
+                println!("unexpect {:?}", msg.downcast::<Result<Status, std::io::Error>>());
+                Box::new(None::<()>)
             }
         })).start()
     )
 }
 
 #[test]
-fn hello() -> Result<()> {
+fn hello() {
     within_system(async move {
         let config: Config = r#"
             test:
@@ -49,22 +52,24 @@ fn hello() -> Result<()> {
                 println!("---{:?}", msg.message);
                 Some(())
             },
+            _msg: Register => Some(()),
             _msg: TermEvent => Some(()),
         });
 
         let watcher = mock_actor!(WatcherActor, {
-            _msg: TermEvent => Some(()),
+            _msg: WatchGlob => Some(()),
         });
 
         console
             .send(Output::now("test".to_string(), "message".to_string()))
             .await?;
 
-        let _commands =
+        let commands =
             CommandActor::from_config(&config, console, watcher, env::current_dir().unwrap());
+
+        let status = commands[0].send(PollStatus).await?;
+        println!("status: {:?}", status);
 
         Ok(())
     });
-
-    Ok(())
 }

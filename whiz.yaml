@@ -29,7 +29,5 @@ dodo:
         - count
         - once
 
-views:
-    mixed:
-        - once
-        - count
+color:
+    shell: python3 -c 'print(u"\u001b[31mHelloWorld\u001b[0m")'

@@ -7,6 +7,7 @@ license = "MPL-2.0"
 
 [dependencies]
 actix = "0.13.0"
+ansi-to-tui = "1.0.1"
 anyhow = "1.0.60"
 chrono = "0.4.19"
 clap = { version = "3.2.13", features = ["derive"] }
@@ -20,4 +21,4 @@ regex = "1.6.0"
 serde = { version = "1.0.139", features = ["derive"] }
 serde_yaml = "0.9.4"
 subprocess = "0.2.9"
-tui = "0.19.0"
+tui = "0.18.0"

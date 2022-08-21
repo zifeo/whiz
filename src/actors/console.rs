@@ -1,6 +1,6 @@
 use actix::prelude::*;
+use ansi_to_tui::IntoText;
 use chrono::prelude::*;
-
 use std::{
     cmp::{max, min},
     collections::HashMap,
@@ -105,9 +105,9 @@ impl ConsoleActor {
                     let from = max(logs.len() - focus.shift, chunks[0].height as usize)
                         - chunks[0].height as usize;
                     let to = min(from + chunks[0].height as usize, logs.len());
-                    let text = logs[from..to].join("\n");
+                    let lines = logs[from..to].join("\n").into_text().unwrap();
 
-                    let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
+                    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: true });
                     f.render_widget(paragraph, chunks[0]);
 
                     let titles = self

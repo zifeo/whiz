@@ -4,12 +4,9 @@ use globset::GlobSet;
 use ignore::gitignore::Gitignore;
 use ignore::Match;
 use notify::event::ModifyKind;
-use notify::{
-    recommended_watcher, Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
-};
+use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::env;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use super::command::{CommandActor, Reload};
 
@@ -68,11 +65,6 @@ impl Actor for WatcherActor {
             }
         })
         .unwrap();
-
-        watcher
-            .configure(Config::OngoingEvents(Some(Duration::from_secs(1))))
-            .unwrap();
-        watcher.configure(Config::PreciseEvents(false)).unwrap();
 
         watcher
             .watch(

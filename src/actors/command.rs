@@ -110,15 +110,29 @@ impl CommandActor {
     fn kill(&mut self) -> Result<()> {
         if let Some(mut child) = self.child.take() {
             if child.poll().is_none() {
+                self.console.do_send(Output::now(
+                    self.op_name.clone(),
+                    "terminating".to_string(),
+                    true,
+                ));
                 child.terminate()?;
-                child.wait_timeout(Duration::from_millis(100))?;
+                child.wait_timeout(Duration::from_millis(1000))?;
 
                 if child.poll().is_none() {
-                    self.console
-                        .do_send(Output::now(self.op_name.clone(), "terminating".to_string()));
+                    self.console.do_send(Output::now(
+                        self.op_name.clone(),
+                        "killing".to_string(),
+                        true,
+                    ));
                     child.kill()?;
                     child.wait()?;
                 }
+            } else {
+                self.console.do_send(Output::now(
+                    self.op_name.clone(),
+                    "already terminated".to_string(),
+                    true,
+                ));
             }
             self.child = None;
         }
@@ -156,7 +170,7 @@ impl CommandActor {
         let self_addr = self.self_addr.clone();
         let fut = async move {
             for line in reader.lines() {
-                console.do_send(Output::now(op_name.clone(), line.unwrap()));
+                console.do_send(Output::now(op_name.clone(), line.unwrap(), false));
             }
             if let Some(addr) = self_addr {
                 addr.do_send(StdoutTerminated);
@@ -263,7 +277,7 @@ impl Handler<Reload> for CommandActor {
 
     fn handle(&mut self, msg: Reload, _: &mut Context<Self>) -> Self::Result {
         self.console
-            .do_send(Output::now(self.op_name.clone(), msg.trigger.clone()));
+            .do_send(Output::now(self.op_name.clone(), msg.trigger.clone(), true));
 
         self.reload().unwrap();
         for next in (&self.nexts).iter() {
@@ -326,8 +340,11 @@ impl Handler<StdoutTerminated> for CommandActor {
             .exit_code()
             .map(|c| c.to_string())
             .unwrap_or_else(|| "?".to_string());
-        self.console
-            .do_send(Output::now(self.op_name.clone(), format!("exited ({})", c)));
+        self.console.do_send(Output::now(
+            self.op_name.clone(),
+            format!("exited ({})", c),
+            true,
+        ));
     }
 }
 

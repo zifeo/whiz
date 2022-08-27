@@ -1,11 +1,11 @@
 use actix::prelude::*;
 use ansi_to_tui::IntoText;
 use chrono::prelude::*;
-use std::{
-    cmp::{max, min},
-    collections::HashMap,
-    io,
-};
+use std::str;
+use std::{cmp::min, collections::HashMap, io};
+use tui::backend::Backend;
+use tui::layout::Rect;
+use tui::Frame;
 
 use tui::{
     backend::CrosstermBackend,
@@ -28,8 +28,9 @@ use crossterm::{
 use super::command::{CommandActor, PoisonPill, Reload};
 
 pub struct Panel {
-    logs: Vec<String>,
-    shift: usize,
+    logs: Vec<(String, Style)>,
+    lines: u16,
+    shift: u16,
     command: Addr<CommandActor>,
 }
 
@@ -37,6 +38,7 @@ impl Panel {
     pub fn new(command: Addr<CommandActor>) -> Self {
         Self {
             logs: Vec::default(),
+            lines: 0,
             shift: 0,
             command,
         }
@@ -51,6 +53,13 @@ pub struct ConsoleActor {
     panels: HashMap<String, Panel>,
 }
 
+pub fn chunks<T: Backend>(f: &Frame<T>) -> Vec<Rect> {
+    Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
+        .split(f.size())
+}
+
 impl ConsoleActor {
     pub fn new(order: Vec<String>) -> Self {
         let stdout = io::stdout();
@@ -62,6 +71,23 @@ impl ConsoleActor {
             order,
             arbiter: Arbiter::new(),
             panels: HashMap::default(),
+        }
+    }
+
+    pub fn up(&mut self) {
+        let height = chunks(&self.terminal.get_frame())[0].height;
+        if let Some(focus) = self.panels.get_mut(&self.index) {
+            if focus.shift < focus.lines - height {
+                focus.shift += 1;
+            }
+        }
+    }
+
+    pub fn down(&mut self) {
+        if let Some(focus) = self.panels.get_mut(&self.index) {
+            if focus.shift >= 1 {
+                focus.shift -= 1;
+            }
         }
     }
 
@@ -95,39 +121,48 @@ impl ConsoleActor {
         if let Some(focus) = &self.panels.get(&self.index) {
             self.terminal
                 .draw(|f| {
-                    let size = f.size();
-                    let chunks = Layout::default()
-                        .direction(Direction::Vertical)
-                        .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
-                        .split(size);
-
+                    let chunks = chunks(f);
                     let logs = &focus.logs;
-                    let from = max(logs.len() - focus.shift, chunks[0].height as usize)
-                        - chunks[0].height as usize;
-                    let to = min(from + chunks[0].height as usize, logs.len());
-                    let lines = logs[from..to].join("\n").into_text().unwrap();
 
-                    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: true });
+                    let log_height = chunks[0].height as u16;
+                    let curr = focus.lines - min(focus.lines, log_height);
+
+                    let lines: Vec<Spans> = logs
+                        .iter()
+                        .flat_map(|l| {
+                            let mut t = l.0.into_text().unwrap();
+                            t.patch_style(l.1);
+                            t.lines
+                        })
+                        .collect();
+
+                    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+                    let paragraph = paragraph.scroll((curr - min(curr, focus.shift), 0));
                     f.render_widget(paragraph, chunks[0]);
 
-                    let titles = self
+                    let mut titles: Vec<Spans> = self
                         .order
                         .iter()
                         .map(|panel| {
-                            let (first, rest) = panel.split_at(1);
-                            Spans::from(vec![
-                                Span::styled(first, Style::default().fg(Color::Yellow)),
-                                Span::styled(rest, Style::default().fg(Color::Green)),
-                            ])
+                            Spans::from(Span::styled(panel, Style::default().fg(Color::Green)))
                         })
                         .collect();
+
+                    titles.push(Spans::from(Span::raw(format!(
+                        "shift {} / window {} / lines {} / max {} / compute {}",
+                        focus.shift,
+                        log_height,
+                        logs.len(),
+                        focus.lines,
+                        f.size().width,
+                    ))));
                     let tabs = Tabs::new(titles)
                         .block(Block::default().borders(Borders::ALL))
                         .select(idx)
                         .highlight_style(
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
-                                .bg(Color::Black),
+                                .bg(Color::DarkGray),
                         );
                     f.render_widget(tabs, chunks[1]);
                 })
@@ -206,30 +241,32 @@ impl Handler<TermEvent> for ConsoleActor {
                     self.previous();
                 }
                 (_, KeyCode::Up) => {
-                    if let Some(focus) = self.panels.get_mut(&self.index) {
-                        if focus.shift < focus.logs.len() {
-                            focus.shift += 1;
-                        }
-                    }
+                    self.up();
                 }
                 (_, KeyCode::Down) => {
-                    if let Some(focus) = self.panels.get_mut(&self.index) {
-                        if focus.shift > 1 {
-                            focus.shift -= 1;
-                        }
-                    }
+                    self.down();
                 }
                 _ => {}
             },
-            Event::Resize(_, _) => {}
+            Event::Resize(width, _) => {
+                for panel in self.panels.values_mut() {
+                    panel.shift = 0;
+                    let new_lines = (&panel.logs)
+                        .iter()
+                        .fold(0, |agg, l| agg + wrapped_lines(&l.0, width));
+                    panel.lines = new_lines;
+                }
+            }
             Event::Mouse(e) => match e.kind {
-                MouseEventKind::ScrollUp => {}
-                MouseEventKind::ScrollDown => {}
+                MouseEventKind::ScrollUp => {
+                    self.up();
+                }
+                MouseEventKind::ScrollDown => {
+                    self.down();
+                }
                 _ => {}
             },
-            Event::FocusGained => {}
-            Event::FocusLost => {}
-            Event::Paste(_) => {}
+            _ => {}
         }
         self.draw();
     }
@@ -238,14 +275,16 @@ impl Handler<TermEvent> for ConsoleActor {
 pub struct Output {
     op: String,
     pub message: String,
+    service: bool,
     _timestamp: DateTime<Local>,
 }
 
 impl Output {
-    pub fn now(op: String, message: String) -> Self {
+    pub fn now(op: String, message: String, service: bool) -> Self {
         Self {
             op,
             message,
+            service,
             _timestamp: Local::now(),
         }
     }
@@ -255,12 +294,24 @@ impl Message for Output {
     type Result = ();
 }
 
+fn wrapped_lines(message: &String, width: u16) -> u16 {
+    let clean = strip_ansi_escapes::strip(message).unwrap();
+    textwrap::wrap(str::from_utf8(&clean).unwrap(), width as usize).len() as u16
+}
+
 impl Handler<Output> for ConsoleActor {
     type Result = ();
 
     fn handle(&mut self, msg: Output, _: &mut Context<Self>) -> Self::Result {
         let focus = self.panels.get_mut(&msg.op).unwrap();
-        focus.logs.push(msg.message);
+        let style = match msg.service {
+            true => Style::default().bg(Color::DarkGray),
+            false => Style::default(),
+        };
+
+        let width = self.terminal.get_frame().size().width;
+        focus.lines += wrapped_lines(&msg.message, width);
+        focus.logs.push((msg.message, style));
         self.draw();
     }
 }

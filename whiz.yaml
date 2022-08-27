@@ -1,5 +1,5 @@
 speedy:
-    shell: "for ((i=0; i<50; i=i+1)); do echo $i; done"
+    shell: 'for i in {10..50}; do for j in {10..30}; do echo -n "$i-$j "; done; echo; done'
     watches:
         - "src/**/*.rs"
 

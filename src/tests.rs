@@ -1,8 +1,9 @@
 use std::{env, future::Future};
 
 use anyhow::{Ok, Result};
+use subprocess::ExitStatus;
 
-use crate::actors::command::{Status, WaitStatus};
+use crate::actors::command::WaitStatus;
 use crate::actors::console::Register;
 use crate::actors::watcher::WatchGlob;
 use crate::{
@@ -31,7 +32,7 @@ macro_rules! mock_actor {
                 } else
             )*
             {
-                println!("unexpect {:?}", msg.downcast::<Result<Status, std::io::Error>>());
+                println!("unexpect {:?}", msg.downcast::<Result<ExitStatus, std::io::Error>>());
                 Box::new(None::<()>)
             }
         })).start()
@@ -61,11 +62,20 @@ fn hello() {
         });
 
         console
-            .send(Output::now("test".to_string(), "message".to_string()))
+            .send(Output::now(
+                "test".to_string(),
+                "message".to_string(),
+                false,
+            ))
             .await?;
 
-        let commands =
-            CommandActor::from_config(&config, console, watcher, env::current_dir().unwrap());
+        let commands = CommandActor::from_config(
+            &config,
+            console,
+            watcher,
+            env::current_dir().unwrap(),
+            false,
+        );
 
         let status = commands[0].send(WaitStatus).await?;
         println!("status: {:?}", status);

@@ -16,6 +16,12 @@ use clap::Parser;
 struct Args {
     #[clap(short, long, value_parser, default_value = "whiz.yaml")]
     file: String,
+
+    #[clap(short, long, value_parser)]
+    verbose: bool,
+
+    #[clap(short, long, value_parser)]
+    timestamp: bool,
 }
 
 fn main() -> Result<()> {
@@ -42,9 +48,10 @@ fn main() -> Result<()> {
 
     let system = System::new();
     let exec = async move {
-        let console = ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned())).start();
+        let console =
+            ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned()), args.timestamp).start();
         let watcher = WatcherActor::new().start();
-        CommandActor::from_config(&config, console, watcher, base_dir.clone());
+        CommandActor::from_config(&config, console, watcher, base_dir.clone(), args.verbose);
     };
 
     Arbiter::current().spawn(exec);

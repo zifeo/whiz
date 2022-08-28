@@ -51,6 +51,7 @@ pub struct ConsoleActor {
     order: Vec<String>,
     arbiter: Arbiter,
     panels: HashMap<String, Panel>,
+    timestamp: bool,
 }
 
 pub fn chunks<T: Backend>(f: &Frame<T>) -> Vec<Rect> {
@@ -61,7 +62,7 @@ pub fn chunks<T: Backend>(f: &Frame<T>) -> Vec<Rect> {
 }
 
 impl ConsoleActor {
-    pub fn new(order: Vec<String>) -> Self {
+    pub fn new(order: Vec<String>, timestamp: bool) -> Self {
         let stdout = io::stdout();
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend).unwrap();
@@ -71,6 +72,7 @@ impl ConsoleActor {
             order,
             arbiter: Arbiter::new(),
             panels: HashMap::default(),
+            timestamp,
         }
     }
 
@@ -210,11 +212,10 @@ impl Actor for ConsoleActor {
         disable_raw_mode().unwrap();
     }
 }
-pub struct TermEvent(Event);
 
-impl Message for TermEvent {
-    type Result = ();
-}
+#[derive(Message, Debug)]
+#[rtype(result = "()")]
+pub struct TermEvent(Event);
 
 impl Handler<TermEvent> for ConsoleActor {
     type Result = ();
@@ -230,9 +231,7 @@ impl Handler<TermEvent> for ConsoleActor {
                 }
                 (_, KeyCode::Char('r')) => {
                     if let Some(focus) = self.panels.get(&self.index) {
-                        focus
-                            .command
-                            .do_send(Reload::now("manual reloading".to_string()));
+                        focus.command.do_send(Reload::Manual);
                     }
                 }
                 (_, KeyCode::Right) => {
@@ -273,11 +272,13 @@ impl Handler<TermEvent> for ConsoleActor {
     }
 }
 
+#[derive(Message)]
+#[rtype(result = "()")]
 pub struct Output {
     op: String,
     pub message: String,
     service: bool,
-    _timestamp: DateTime<Local>,
+    timestamp: DateTime<Local>,
 }
 
 impl Output {
@@ -286,13 +287,9 @@ impl Output {
             op,
             message,
             service,
-            _timestamp: Local::now(),
+            timestamp: Local::now(),
         }
     }
-}
-
-impl Message for Output {
-    type Result = ();
 }
 
 fn wrapped_lines(message: &String, width: u16) -> u16 {
@@ -310,20 +307,22 @@ impl Handler<Output> for ConsoleActor {
             false => Style::default(),
         };
 
+        let message = match self.timestamp {
+            true => format!("{}  {}", msg.timestamp.format("%H:%M:%S%.3f"), msg.message),
+            false => msg.message,
+        };
         let width = self.terminal.get_frame().size().width;
-        focus.lines += wrapped_lines(&msg.message, width);
-        focus.logs.push((msg.message, style));
+        focus.lines += wrapped_lines(&message, width);
+        focus.logs.push((message, style));
         self.draw();
     }
 }
 
+#[derive(Message)]
+#[rtype(result = "()")]
 pub struct Register {
     pub title: String,
     pub addr: Addr<CommandActor>,
-}
-
-impl Message for Register {
-    type Result = ();
 }
 
 impl Handler<Register> for ConsoleActor {

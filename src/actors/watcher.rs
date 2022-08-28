@@ -77,15 +77,12 @@ impl Actor for WatcherActor {
     }
 }
 
-#[derive(Clone)]
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
 pub struct WatchGlob {
     pub command: Addr<CommandActor>,
     pub on: GlobSet,
     pub off: GlobSet,
-}
-
-impl Message for WatchGlob {
-    type Result = ();
 }
 
 impl Handler<WatchGlob> for WatcherActor {
@@ -96,11 +93,9 @@ impl Handler<WatchGlob> for WatcherActor {
     }
 }
 
+#[derive(Message)]
+#[rtype(result = "()")]
 struct WatchEvent(Event, Vec<PathBuf>);
-
-impl Message for WatchEvent {
-    type Result = ();
-}
 
 impl Handler<WatchEvent> for WatcherActor {
     type Result = ();
@@ -114,15 +109,12 @@ impl Handler<WatchEvent> for WatcherActor {
                 .collect::<Vec<_>>();
 
             if !paths.is_empty() {
-                let trigger = format!(
-                    "Reloading due to {}",
-                    paths
-                        .iter()
-                        .map(|p| p.as_path().display().to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-                glob.command.do_send(Reload::now(trigger))
+                let trigger = paths
+                    .iter()
+                    .map(|p| p.as_path().display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                glob.command.do_send(Reload::Watch(trigger))
             }
         }
     }

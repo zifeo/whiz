@@ -10,7 +10,19 @@ once:
         A: world
     shell: "echo hello $A"
 
-count:
+once_b:
+    shell: "sleep 2 && echo B"
+
+    depends_on: once
+
+once_c:
+    shell: "echo C"
+
+    depends_on:
+        - once
+        - once_b
+
+sleep_count:
     workdir: .
     watches: .
     shell: "for ((i=0; i<10; i=i+1)); do echo $TEST $i; sleep 1; done"
@@ -26,7 +38,6 @@ dodo:
     shell: "sleep 30"
 
     depends_on:
-        - count
         - once
 
 color:

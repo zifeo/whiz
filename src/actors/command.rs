@@ -8,6 +8,8 @@ use subprocess::{Exec, ExitStatus, Popen, Redirection};
 use globset::{Glob, GlobSetBuilder};
 use path_absolutize::*;
 use path_clean::{self, PathClean};
+use std::collections::BTreeMap;
+
 use std::{collections::HashMap, env, time::Duration};
 use std::{
     io::{BufRead, BufReader},
@@ -39,17 +41,73 @@ mod prelude {
 
 use prelude::*;
 
+#[derive(Debug)]
+pub enum Child {
+    NotStarted,
+    Killed,
+    Process(Popen),
+    Exited(ExitStatus),
+}
+
+impl Child {
+    fn poll(&mut self, kill: bool) -> Result<bool> {
+        if let Child::Process(_) = &self {
+            if let Child::Process(mut p) = std::mem::replace(self, Child::NotStarted) {
+                if kill && p.poll().is_none() {
+                    p.terminate()?;
+                    p.wait_timeout(Duration::from_millis(10))?;
+
+                    if p.poll().is_none() {
+                        p.kill()?;
+                        p.wait()?;
+                    }
+                }
+
+                match p.poll() {
+                    Some(exit) => {
+                        *self = Self::Exited(exit);
+                        Ok(true)
+                    }
+                    None if kill => {
+                        *self = Self::Killed;
+                        Ok(true)
+                    }
+                    None => {
+                        *self = Child::Process(p);
+                        Ok(false)
+                    }
+                }
+            } else {
+                panic!("cannot swap");
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn exit_status(&mut self) -> Option<ExitStatus> {
+        match &self {
+            Child::Process(_) => None,
+            Child::Killed => Some(ExitStatus::Undetermined),
+            Child::Exited(exit) => Some(exit.clone()),
+            Child::NotStarted => panic!("should not happen"),
+        }
+    }
+}
+
 pub struct CommandActor {
     op_name: String,
     operator: Operator,
     console: Addr<ConsoleAct>,
     watcher: Addr<WatcherAct>,
     arbiter: Arbiter,
-    child: Option<Popen>,
+    child: Child,
     nexts: Vec<Addr<CommandActor>>,
-    last_run: DateTime<Local>,
     base_dir: PathBuf,
     self_addr: Option<Addr<CommandActor>>,
+    pending_upstream: BTreeMap<String, usize>,
+    verbose: bool,
+    started_at: DateTime<Local>,
 }
 
 impl CommandActor {
@@ -58,6 +116,7 @@ impl CommandActor {
         console: Addr<ConsoleAct>,
         watcher: Addr<WatcherAct>,
         base_dir: PathBuf,
+        verbose: bool,
     ) -> Vec<Addr<CommandActor>> {
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
 
@@ -74,8 +133,13 @@ impl CommandActor {
                     .map(|e| commands.get(e).unwrap().clone())
                     .collect(),
                 base_dir.clone(),
+                verbose,
             )
             .start();
+
+            if op.depends_on.resolve().is_empty() {
+                actor.do_send(Reload::Start)
+            }
             commands.insert(op_name, actor);
         }
 
@@ -93,6 +157,7 @@ impl CommandActor {
         watcher: Addr<WatcherAct>,
         nexts: Vec<Addr<CommandActor>>,
         base_dir: PathBuf,
+        verbose: bool,
     ) -> Self {
         Self {
             op_name,
@@ -100,48 +165,57 @@ impl CommandActor {
             console,
             watcher,
             arbiter: Arbiter::new(),
-            child: None,
+            child: Child::NotStarted,
             nexts,
-            last_run: Local::now(),
             base_dir,
             self_addr: None,
+            pending_upstream: BTreeMap::default(),
+            verbose,
+            started_at: Local::now(),
         }
     }
 
-    fn kill(&mut self) -> Result<()> {
-        if let Some(mut child) = self.child.take() {
-            if child.poll().is_none() {
-                self.console.do_send(Output::now(
-                    self.op_name.clone(),
-                    "terminating".to_string(),
-                    true,
-                ));
-                child.terminate()?;
-                child.wait_timeout(Duration::from_millis(1000))?;
+    fn log_info(&self, log: String) {
+        self.console
+            .do_send(Output::now(self.op_name.clone(), log, true));
+    }
 
-                if child.poll().is_none() {
-                    self.console.do_send(Output::now(
-                        self.op_name.clone(),
-                        "killing".to_string(),
-                        true,
-                    ));
-                    child.kill()?;
-                    child.wait()?;
-                }
-            }
-            self.console.do_send(Output::now(
-                self.op_name.clone(),
-                "terminated".to_string(),
-                true,
-            ));
-            self.child = None;
+    fn log_debug(&self, log: String) {
+        if self.verbose {
+            self.log_info(log);
         }
-        Ok(())
+    }
+
+    fn ensure_stopped(&mut self) {
+        if self.child.poll(true).unwrap() {
+            self.send_reload();
+        }
+    }
+
+    fn upstream(&self) -> String {
+        Vec::from_iter(
+            self.pending_upstream
+                .iter()
+                .map(|(k, v)| format!("{}×{}", v, k)),
+        )
+        .join(", ")
+    }
+
+    fn send_reload(&self) {
+        for next in (&self.nexts).iter() {
+            next.do_send(Reload::Op(self.op_name.clone()));
+        }
+    }
+
+    fn send_will_reload(&self) {
+        for next in (&self.nexts).iter() {
+            next.do_send(WillReload {
+                op_name: self.op_name.clone(),
+            });
+        }
     }
 
     fn reload(&mut self) -> Result<()> {
-        self.kill()?;
-
         let args = &self.operator.shell;
         let mut envs: HashMap<String, String> = HashMap::new();
         envs.extend(env::vars());
@@ -168,34 +242,22 @@ impl CommandActor {
         let console = self.console.clone();
         let op_name = self.op_name.clone();
         let self_addr = self.self_addr.clone();
+        let started_at = Local::now();
+
         let fut = async move {
             for line in reader.lines() {
                 console.do_send(Output::now(op_name.clone(), line.unwrap(), false));
             }
             if let Some(addr) = self_addr {
-                addr.do_send(StdoutTerminated);
+                addr.do_send(StdoutTerminated { started_at });
             }
         };
 
-        self.child = Some(p);
-
-        self.last_run = Local::now();
+        self.child = Child::Process(p);
+        self.started_at = started_at;
         self.arbiter.spawn(fut);
 
         Ok(())
-    }
-
-    fn exit_code(&mut self) -> Option<i32> {
-        match &mut self.child {
-            None => None,
-            Some(p) => p.poll().map(|c| match c {
-                ExitStatus::Exited(c) => Some(c as i32),
-                ExitStatus::Other(c) => Some(c),
-                ExitStatus::Signaled(c) => Some(c as i32),
-                ExitStatus::Undetermined => None,
-            }),
-        }
-        .flatten()
     }
 }
 
@@ -241,87 +303,117 @@ impl Actor for CommandActor {
 
             self.watcher.do_send(glob);
         }
-
-        self.reload().unwrap();
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
         self.self_addr = None;
-        self.kill().unwrap();
+        self.child.poll(true).unwrap();
     }
 }
 
-#[derive(Clone)]
-pub struct Reload {
-    trigger: String,
-    at: DateTime<Local>,
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct WillReload {
+    pub op_name: String,
 }
 
-impl Reload {
-    pub fn now(trigger: String) -> Self {
-        Self {
-            trigger,
-            at: Local::now(),
-        }
-    }
-    fn with_trigger(&self, trigger: String) -> Self {
-        Self {
-            trigger,
-            at: self.at,
-        }
-    }
-}
-
-impl Message for Reload {
+impl Handler<WillReload> for CommandActor {
     type Result = ();
+
+    fn handle(&mut self, msg: WillReload, _: &mut Context<Self>) -> Self::Result {
+        let counter = self.pending_upstream.remove(&msg.op_name).unwrap_or(0);
+        self.pending_upstream
+            .insert(msg.op_name.clone(), counter + 1);
+
+        self.log_debug(format!("WAIT: +{} [{}]", msg.op_name, self.upstream()));
+
+        self.ensure_stopped();
+
+        self.send_will_reload();
+    }
+}
+
+#[derive(Message, Clone, Debug)]
+#[rtype(result = "()")]
+pub enum Reload {
+    Start,
+    Manual,
+    Watch(String),
+    Op(String),
 }
 
 impl Handler<Reload> for CommandActor {
     type Result = ();
 
     fn handle(&mut self, msg: Reload, _: &mut Context<Self>) -> Self::Result {
-        self.console
-            .do_send(Output::now(self.op_name.clone(), msg.trigger.clone(), true));
+        self.ensure_stopped();
+
+        match &msg {
+            Reload::Start => {
+                self.send_will_reload();
+            }
+            Reload::Manual => {
+                if self.pending_upstream.len() > 0 {
+                    self.log_info(format!(
+                        "RELOAD: manual while pending on {}",
+                        self.upstream()
+                    ));
+                } else {
+                    self.log_info(format!("RELOAD: manual"));
+                }
+                self.send_will_reload();
+            }
+            Reload::Watch(files) => {
+                self.log_info(format!("RELOAD: files {} changed", files));
+                self.send_will_reload();
+            }
+            Reload::Op(op_name) => {
+                let counter = self.pending_upstream.remove(op_name).unwrap();
+
+                if counter > 1 {
+                    self.pending_upstream.insert(op_name.clone(), counter - 1);
+                }
+
+                self.log_debug(format!("WAIT: -{} [{}]", op_name.clone(), self.upstream()));
+
+                if self.pending_upstream.len() > 0 {
+                    return ();
+                } else {
+                    self.log_info(format!("RELOAD: upstream empty"));
+                }
+            }
+        }
 
         self.reload().unwrap();
-        for next in (&self.nexts).iter() {
-            next.do_send(msg.with_trigger(format!("{} via {}", self.op_name, msg.trigger)));
-        }
     }
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<Status, std::io::Error>")]
+#[rtype(result = "Result<Option<ExitStatus>, std::io::Error>")]
 pub struct GetStatus;
 
-#[derive(Debug)]
-pub struct Status {
-    pub exit_code: Option<i32>,
-}
-
 impl Handler<GetStatus> for CommandActor {
-    type Result = Result<Status, std::io::Error>;
+    type Result = Result<Option<ExitStatus>, std::io::Error>;
 
     fn handle(&mut self, _: GetStatus, _: &mut Self::Context) -> Self::Result {
-        Ok(Status {
-            exit_code: self.exit_code(),
-        })
+        self.child.poll(false).unwrap();
+        println!("{:?}", self.child.exit_status());
+        Ok(self.child.exit_status())
     }
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<Status, std::io::Error>")]
+#[rtype(result = "Result<ExitStatus, std::io::Error>")]
 pub struct WaitStatus;
 
 impl Handler<WaitStatus> for CommandActor {
-    type Result = ResponseActFuture<Self, Result<Status, std::io::Error>>;
+    type Result = ResponseActFuture<Self, Result<ExitStatus, std::io::Error>>;
 
     fn handle(&mut self, _: WaitStatus, ctx: &mut Self::Context) -> Self::Result {
         let addr = ctx.address();
         let f = async move {
             loop {
-                let status = addr.send(GetStatus).await.unwrap().unwrap();
-                if status.exit_code.is_some() {
+                if let Some(status) = addr.send(GetStatus).await.unwrap().unwrap() {
                     return status;
                 }
                 sleep(Duration::from_millis(20)).await;
@@ -334,29 +426,30 @@ impl Handler<WaitStatus> for CommandActor {
 }
 #[derive(Message)]
 #[rtype(result = "()")]
-struct StdoutTerminated;
+struct StdoutTerminated {
+    pub started_at: DateTime<Local>,
+}
 
 impl Handler<StdoutTerminated> for CommandActor {
     type Result = ();
 
-    fn handle(&mut self, _: StdoutTerminated, _: &mut Self::Context) -> Self::Result {
-        let c = self
-            .exit_code()
-            .map(|c| c.to_string())
-            .unwrap_or_else(|| "?".to_string());
-        self.console.do_send(Output::now(
-            self.op_name.clone(),
-            format!("exited ({})", c),
-            true,
-        ));
+    fn handle(&mut self, msg: StdoutTerminated, _: &mut Self::Context) -> Self::Result {
+        if msg.started_at == self.started_at {
+            self.ensure_stopped();
+            let exit = self
+                .child
+                .exit_status()
+                .map(|c| format!("{:?}", c))
+                .unwrap_or_else(|| "?".to_string());
+
+            self.log_info(format!("{}", exit));
+        }
     }
 }
 
+#[derive(Message)]
+#[rtype(result = "()")]
 pub struct PoisonPill;
-
-impl Message for PoisonPill {
-    type Result = ();
-}
 
 impl Handler<PoisonPill> for CommandActor {
     type Result = ();

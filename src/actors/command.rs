@@ -89,7 +89,7 @@ impl Child {
         match &self {
             Child::Process(_) => None,
             Child::Killed => Some(ExitStatus::Undetermined),
-            Child::Exited(exit) => Some(exit.clone()),
+            Child::Exited(exit) => Some(*exit),
             Child::NotStarted => panic!("should not happen"),
         }
     }
@@ -353,13 +353,13 @@ impl Handler<Reload> for CommandActor {
                 self.send_will_reload();
             }
             Reload::Manual => {
-                if self.pending_upstream.len() > 0 {
+                if !self.pending_upstream.is_empty() {
                     self.log_info(format!(
                         "RELOAD: manual while pending on {}",
                         self.upstream()
                     ));
                 } else {
-                    self.log_info(format!("RELOAD: manual"));
+                    self.log_info("RELOAD: manual".to_string());
                 }
                 self.send_will_reload();
             }
@@ -376,10 +376,10 @@ impl Handler<Reload> for CommandActor {
 
                 self.log_debug(format!("WAIT: -{} [{}]", op_name.clone(), self.upstream()));
 
-                if self.pending_upstream.len() > 0 {
-                    return ();
+                if !self.pending_upstream.is_empty() {
+                    return;
                 } else {
-                    self.log_info(format!("RELOAD: upstream empty"));
+                    self.log_info("RELOAD: upstream empty".to_string());
                 }
             }
         }
@@ -442,7 +442,7 @@ impl Handler<StdoutTerminated> for CommandActor {
                 .map(|c| format!("{:?}", c))
                 .unwrap_or_else(|| "?".to_string());
 
-            self.log_info(format!("{}", exit));
+            self.log_info(exit);
         }
     }
 }

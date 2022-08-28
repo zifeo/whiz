@@ -140,14 +140,14 @@ impl ConsoleActor {
                     let paragraph = paragraph.scroll((curr - min(curr, focus.shift), 0));
                     f.render_widget(paragraph, chunks[0]);
 
-                    let mut titles: Vec<Spans> = self
+                    let /*mut*/ titles: Vec<Spans> = self
                         .order
                         .iter()
                         .map(|panel| {
                             Spans::from(Span::styled(panel, Style::default().fg(Color::Green)))
                         })
                         .collect();
-
+                    /*
                     titles.push(Spans::from(Span::raw(format!(
                         "shift {} / window {} / lines {} / max {} / compute {}",
                         focus.shift,
@@ -156,6 +156,7 @@ impl ConsoleActor {
                         focus.lines,
                         f.size().width,
                     ))));
+                    */
                     let tabs = Tabs::new(titles)
                         .block(Block::default().borders(Borders::ALL))
                         .select(idx)

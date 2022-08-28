@@ -127,13 +127,12 @@ impl CommandActor {
                     child.kill()?;
                     child.wait()?;
                 }
-            } else {
-                self.console.do_send(Output::now(
-                    self.op_name.clone(),
-                    "already terminated".to_string(),
-                    true,
-                ));
             }
+            self.console.do_send(Output::now(
+                self.op_name.clone(),
+                "terminated".to_string(),
+                true,
+            ));
             self.child = None;
         }
         Ok(())

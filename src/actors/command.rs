@@ -3,6 +3,7 @@ use actix::prelude::*;
 
 use anyhow::Result;
 use chrono::{DateTime, Local};
+use regex::Regex;
 use subprocess::{Exec, ExitStatus, Popen, Redirection};
 
 use globset::{Glob, GlobSetBuilder};
@@ -108,6 +109,24 @@ pub struct CommandActor {
     pending_upstream: BTreeMap<String, usize>,
     verbose: bool,
     started_at: DateTime<Local>,
+    envs: Vec<(String, String)>,
+}
+
+pub fn resolve_envs(
+    kvs: &HashMap<String, String>,
+    vars: &HashMap<String, String>,
+) -> Result<HashMap<String, String>> {
+    let re = Regex::new(r"(\$\{?(\w+)\}?)")?;
+    let res = kvs
+        .iter()
+        .map(|(key, value)| {
+            let hydration = re.captures_iter(value).fold(value.clone(), |agg, c| {
+                agg.replace(&c[1], vars.get(&c[2]).unwrap_or(&"".to_string()))
+            });
+            (key.clone(), hydration)
+        })
+        .collect();
+    Ok(res)
 }
 
 impl CommandActor {
@@ -134,6 +153,7 @@ impl CommandActor {
                     .collect(),
                 base_dir.clone(),
                 verbose,
+                &config.envs,
             )
             .start();
 
@@ -150,6 +170,7 @@ impl CommandActor {
             .collect::<Vec<_>>()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         op_name: String,
         operator: Operator,
@@ -158,7 +179,12 @@ impl CommandActor {
         nexts: Vec<Addr<CommandActor>>,
         base_dir: PathBuf,
         verbose: bool,
+        common_envs: &HashMap<String, String>,
     ) -> Self {
+        let mut envs = HashMap::from_iter(env::vars());
+        envs.extend(resolve_envs(common_envs, &envs).unwrap());
+        envs.extend(resolve_envs(&operator.envs.clone().unwrap_or_default(), &envs).unwrap());
+
         Self {
             op_name,
             operator,
@@ -172,6 +198,7 @@ impl CommandActor {
             pending_upstream: BTreeMap::default(),
             verbose,
             started_at: Local::now(),
+            envs: envs.into_iter().collect(),
         }
     }
 
@@ -217,10 +244,6 @@ impl CommandActor {
 
     fn reload(&mut self) -> Result<()> {
         let args = &self.operator.shell;
-        let mut envs: HashMap<String, String> = HashMap::new();
-        envs.extend(env::vars());
-        envs.extend(self.operator.resolve_envs()?);
-
         let mut p = Exec::cmd("bash")
             .cwd(
                 self.operator
@@ -230,7 +253,7 @@ impl CommandActor {
                     .unwrap_or_else(|| env::current_dir().unwrap()),
             )
             .args(&["-c", args])
-            .env_extend(&envs.into_iter().collect::<Vec<(String, String)>>())
+            .env_extend(&self.envs)
             .stdout(Redirection::Pipe)
             .stderr(Redirection::Merge)
             .popen()

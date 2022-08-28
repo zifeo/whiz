@@ -1,3 +1,6 @@
+envs:
+    B: second
+
 speedy:
     shell: 'for i in {10..50}; do for j in {10..30}; do echo -n "$i-$j "; done; echo; done'
     watches:
@@ -11,7 +14,7 @@ once:
     shell: "echo hello $A"
 
 once_b:
-    shell: "sleep 2 && echo B"
+    shell: "sleep 2 && echo $B"
 
     depends_on: once
 

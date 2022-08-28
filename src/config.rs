@@ -1,8 +1,7 @@
-use std::{collections::HashMap, env, io, str::FromStr};
+use std::{collections::HashMap, io, str::FromStr};
 
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
-use regex::Regex;
 use serde::Deserialize;
 
 use std::fs::File;
@@ -49,29 +48,14 @@ pub struct Operator {
     pub depends_on: Lift<String>,
 }
 
-impl Operator {
-    pub fn resolve_envs(&self) -> Result<HashMap<String, String>> {
-        let re = Regex::new(r"(\$\{?(\w+)\}?)")?;
-        let vars: HashMap<String, String> = HashMap::from_iter(env::vars());
-        let res = match &self.envs {
-            None => HashMap::default(),
-            Some(kvs) => kvs
-                .iter()
-                .map(|(key, value)| {
-                    let hydration = re.captures_iter(value).fold(value.clone(), |agg, c| {
-                        agg.replace(&c[1], vars.get(&c[2]).unwrap_or(&"".to_string()))
-                    });
-                    (key.clone(), hydration)
-                })
-                .collect::<HashMap<_, _>>(),
-        };
-        Ok(res)
-    }
-}
-
 #[derive(Deserialize, Debug)]
 pub struct Config {
-    pub views: Option<HashMap<String, Vec<String>>>,
+    #[serde(default)]
+    pub views: HashMap<String, Vec<String>>,
+
+    #[serde(default)]
+    pub envs: HashMap<String, String>,
+
     #[serde(flatten)]
     pub ops: IndexMap<String, Operator>,
 }
@@ -99,12 +83,10 @@ impl Config {
 
     pub fn build_dag(&self) -> Result<Dag> {
         // views
-        if let Some(views) = &self.views {
-            for (view_name, op_names) in (views).iter() {
-                for op_name in op_names.iter() {
-                    if !self.ops.contains_key(op_name) {
-                        return Err(anyhow!("{} in view {}", op_name, view_name));
-                    }
+        for (view_name, op_names) in self.views.iter() {
+            for op_name in op_names.iter() {
+                if !self.ops.contains_key(op_name) {
+                    return Err(anyhow!("{} in view {}", op_name, view_name));
                 }
             }
         }

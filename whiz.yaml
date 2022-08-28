@@ -31,3 +31,10 @@ dodo:
 
 color:
     shell: python3 -c 'print(u"\u001b[31mHelloWorld\u001b[0m")'
+
+watch_parent:
+    workdir: src
+    shell: ls
+    watches:
+        - "*"
+        - "../*"

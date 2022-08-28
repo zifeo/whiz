@@ -6,6 +6,7 @@ use chrono::{DateTime, Local};
 use subprocess::{Exec, ExitStatus, Popen, Redirection};
 
 use globset::{Glob, GlobSetBuilder};
+use path_absolutize::*;
 use path_clean::{self, PathClean};
 use std::{collections::HashMap, env, time::Duration};
 use std::{
@@ -220,12 +221,16 @@ impl Actor for CommandActor {
         if !watches.is_empty() {
             let mut on = GlobSetBuilder::new();
             for pattern in self.operator.watches.resolve() {
-                on.add(Glob::new(&dir.join(&pattern).to_string_lossy()).unwrap());
+                on.add(
+                    Glob::new(&dir.join(&pattern).absolutize().unwrap().to_string_lossy()).unwrap(),
+                );
             }
 
             let mut off = GlobSetBuilder::new();
             for pattern in self.operator.ignores.resolve() {
-                off.add(Glob::new(&dir.join(&pattern).to_string_lossy()).unwrap());
+                off.add(
+                    Glob::new(&dir.join(&pattern).absolutize().unwrap().to_string_lossy()).unwrap(),
+                );
             }
 
             let glob = WatchGlob {

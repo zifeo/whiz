@@ -348,6 +348,7 @@ impl Handler<WillReload> for CommandActor {
         self.pending_upstream
             .insert(msg.op_name.clone(), counter + 1);
 
+        self.log_info(format!("Waiting on {}", msg.op_name));
         self.log_debug(format!("WAIT: +{} [{}]", msg.op_name, self.upstream()));
 
         self.ensure_stopped();
@@ -402,7 +403,7 @@ impl Handler<Reload> for CommandActor {
                 if !self.pending_upstream.is_empty() {
                     return;
                 } else {
-                    self.log_info("RELOAD: upstream empty".to_string());
+                    self.log_info("Upstream(s) finished".to_string());
                 }
             }
         }

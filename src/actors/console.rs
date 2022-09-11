@@ -18,9 +18,7 @@ use tui::{
 
 use crossterm::{
     cursor::{self},
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind,
-    },
+    event::{self, Event, KeyCode, KeyModifiers, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -182,7 +180,6 @@ impl Actor for ConsoleActor {
         execute!(
             self.terminal.backend_mut(),
             cursor::Hide,
-            EnableMouseCapture,
             EnterAlternateScreen,
         )
         .unwrap();
@@ -205,7 +202,6 @@ impl Actor for ConsoleActor {
         execute!(
             self.terminal.backend_mut(),
             LeaveAlternateScreen,
-            DisableMouseCapture,
             cursor::Show,
         )
         .unwrap();

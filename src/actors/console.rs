@@ -74,21 +74,31 @@ impl ConsoleActor {
         }
     }
 
-    pub fn up(&mut self) {
-        let height = chunks(&self.terminal.get_frame())[0].height;
-        if let Some(focus) = self.panels.get_mut(&self.index) {
-            if focus.shift < focus.lines - height {
-                focus.shift += 1;
+    pub fn up(&mut self, shift: u16) {
+        let log_height = self.get_log_height();
+        if let Some(focused_panel) = self.panels.get_mut(&self.index) {
+            // maximum_scroll is the number of lines
+            // overflowing in the current focused panel
+            let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
+
+            // shift goes from 0 until maximum_scroll
+            focused_panel.shift = min(focused_panel.shift + shift, maximum_scroll);
+        }
+    }
+
+    pub fn down(&mut self, shift: u16) {
+        if let Some(focused_panel) = self.panels.get_mut(&self.index) {
+            if focused_panel.shift >= shift {
+                focused_panel.shift -= shift;
+            } else {
+                focused_panel.shift = 0;
             }
         }
     }
 
-    pub fn down(&mut self) {
-        if let Some(focus) = self.panels.get_mut(&self.index) {
-            if focus.shift >= 1 {
-                focus.shift -= 1;
-            }
-        }
+    pub fn get_log_height(&mut self) -> u16 {
+        let frame = self.terminal.get_frame();
+        chunks(&frame)[0].height
     }
 
     pub fn idx(&self) -> usize {
@@ -238,11 +248,27 @@ impl Handler<TermEvent> for ConsoleActor {
                 }
                 (_, KeyCode::Up | KeyCode::Char('k'))
                 | (KeyModifiers::CONTROL, KeyCode::Char('p')) => {
-                    self.up();
+                    self.up(1);
                 }
                 (_, KeyCode::Down | KeyCode::Char('j'))
                 | (KeyModifiers::CONTROL, KeyCode::Char('n')) => {
-                    self.down();
+                    self.down(1);
+                }
+                (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
+                    let log_height = self.get_log_height();
+                    self.up(log_height / 2);
+                }
+                (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
+                    let log_height = self.get_log_height();
+                    self.down(log_height / 2);
+                }
+                (KeyModifiers::CONTROL, KeyCode::Char('b')) => {
+                    let log_height = self.get_log_height();
+                    self.up(log_height);
+                }
+                (KeyModifiers::CONTROL, KeyCode::Char('f')) => {
+                    let log_height = self.get_log_height();
+                    self.down(log_height);
                 }
                 _ => {}
             },
@@ -257,10 +283,10 @@ impl Handler<TermEvent> for ConsoleActor {
             }
             Event::Mouse(e) => match e.kind {
                 MouseEventKind::ScrollUp => {
-                    self.up();
+                    self.up(1);
                 }
                 MouseEventKind::ScrollDown => {
-                    self.down();
+                    self.down(1);
                 }
                 _ => {}
             },

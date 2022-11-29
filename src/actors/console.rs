@@ -101,6 +101,12 @@ impl ConsoleActor {
         chunks(&frame)[0].height
     }
 
+    pub fn go_to(&mut self, panel_index: usize) {
+        if panel_index < self.order.len() {
+            self.index = self.order[panel_index].clone();
+        }
+    }
+
     pub fn idx(&self) -> usize {
         self.order
             .iter()
@@ -272,6 +278,19 @@ impl Handler<TermEvent> for ConsoleActor {
                 (KeyModifiers::CONTROL, KeyCode::Char('f')) => {
                     let log_height = self.get_log_height();
                     self.down(log_height);
+                }
+                (KeyModifiers::NONE, KeyCode::Char(ch)) => {
+                    if ch.is_ascii_digit() {
+                        let mut panel_index = ch.to_digit(10).unwrap() as usize;
+                        // first tab is key 1, therefore
+                        // in key 0 go to last tab
+                        if panel_index == 0 {
+                            panel_index = self.order.len() - 1;
+                        } else {
+                            panel_index -= 1;
+                        }
+                        self.go_to(panel_index);
+                    }
                 }
                 _ => {}
             },

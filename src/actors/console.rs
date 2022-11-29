@@ -17,7 +17,7 @@ use tui::{
 };
 
 use crossterm::{
-    cursor::{self},
+    cursor,
     event::{self, Event, KeyCode, KeyModifiers, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},

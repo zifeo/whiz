@@ -81,7 +81,7 @@ impl ConsoleActor {
             // overflowing in the current focused panel
             let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
 
-            // shift goes from 0 until maximum_scroll
+            // `focused_panel.shift` goes from 0 until maximum_scroll
             focused_panel.shift = min(focused_panel.shift + shift, maximum_scroll);
         }
     }
@@ -128,14 +128,14 @@ impl ConsoleActor {
 
     fn draw(&mut self) {
         let idx = self.idx();
-        if let Some(focus) = &self.panels.get(&self.index) {
+        if let Some(focused_panel) = &self.panels.get(&self.index) {
             self.terminal
                 .draw(|f| {
                     let chunks = chunks(f);
-                    let logs = &focus.logs;
+                    let logs = &focused_panel.logs;
 
                     let log_height = chunks[0].height as u16;
-                    let curr = focus.lines - min(focus.lines, log_height);
+                    let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
 
                     let lines: Vec<Spans> = logs
                         .iter()
@@ -147,7 +147,10 @@ impl ConsoleActor {
                         .collect();
 
                     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
-                    let paragraph = paragraph.scroll((curr - min(curr, focus.shift), 0));
+
+                    // scroll by default until the last line
+                    let paragraph = paragraph
+                        .scroll((maximum_scroll - min(maximum_scroll, focused_panel.shift), 0));
                     f.render_widget(paragraph, chunks[0]);
 
                     let /*mut*/ titles: Vec<Spans> = self
@@ -236,8 +239,8 @@ impl Handler<TermEvent> for ConsoleActor {
                     System::current().stop();
                 }
                 (_, KeyCode::Char('r')) => {
-                    if let Some(focus) = self.panels.get(&self.index) {
-                        focus.command.do_send(Reload::Manual);
+                    if let Some(focused_panel) = self.panels.get(&self.index) {
+                        focused_panel.command.do_send(Reload::Manual);
                     }
                 }
                 (_, KeyCode::Right | KeyCode::Char('l')) => {
@@ -325,7 +328,7 @@ impl Handler<Output> for ConsoleActor {
     type Result = ();
 
     fn handle(&mut self, msg: Output, _: &mut Context<Self>) -> Self::Result {
-        let focus = self.panels.get_mut(&msg.op).unwrap();
+        let focused_panel = self.panels.get_mut(&msg.op).unwrap();
         let style = match msg.service {
             true => Style::default().bg(Color::DarkGray),
             false => Style::default(),
@@ -336,8 +339,8 @@ impl Handler<Output> for ConsoleActor {
             false => msg.message,
         };
         let width = self.terminal.get_frame().size().width;
-        focus.lines += wrapped_lines(&message, width);
-        focus.logs.push((message, style));
+        focused_panel.lines += wrapped_lines(&message, width);
+        focused_panel.logs.push((message, style));
         self.draw();
     }
 }

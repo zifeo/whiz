@@ -245,17 +245,6 @@ impl Handler<TermEvent> for ConsoleActor {
                         .for_each(|e| e.command.do_send(PoisonPill));
                     System::current().stop();
                 }
-                (KeyModifiers::NONE, KeyCode::Char('r')) => {
-                    if let Some(focused_panel) = self.panels.get(&self.index) {
-                        focused_panel.command.do_send(Reload::Manual);
-                    }
-                }
-                (KeyModifiers::NONE, KeyCode::Right | KeyCode::Char('l')) => {
-                    self.next();
-                }
-                (KeyModifiers::NONE, KeyCode::Left | KeyCode::Char('h')) => {
-                    self.previous();
-                }
                 (KeyModifiers::NONE, KeyCode::Up | KeyCode::Char('k'))
                 | (KeyModifiers::CONTROL, KeyCode::Char('p')) => {
                     self.up(1);
@@ -264,35 +253,52 @@ impl Handler<TermEvent> for ConsoleActor {
                 | (KeyModifiers::CONTROL, KeyCode::Char('n')) => {
                     self.down(1);
                 }
-                (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
-                    let log_height = self.get_log_height();
-                    self.up(log_height / 2);
-                }
-                (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
-                    let log_height = self.get_log_height();
-                    self.down(log_height / 2);
-                }
-                (KeyModifiers::CONTROL, KeyCode::Char('b')) => {
-                    let log_height = self.get_log_height();
-                    self.up(log_height);
-                }
-                (KeyModifiers::CONTROL, KeyCode::Char('f')) => {
-                    let log_height = self.get_log_height();
-                    self.down(log_height);
-                }
-                (KeyModifiers::NONE, KeyCode::Char(ch)) => {
-                    if ch.is_ascii_digit() {
-                        let mut panel_index = ch.to_digit(10).unwrap() as usize;
-                        // first tab is key 1, therefore
-                        // in key 0 go to last tab
-                        if panel_index == 0 {
-                            panel_index = self.order.len() - 1;
-                        } else {
-                            panel_index -= 1;
-                        }
-                        self.go_to(panel_index);
+                (KeyModifiers::CONTROL, key_code) => match key_code {
+                    KeyCode::Char('f') => {
+                        let log_height = self.get_log_height();
+                        self.down(log_height);
                     }
-                }
+                    KeyCode::Char('u') => {
+                        let log_height = self.get_log_height();
+                        self.up(log_height / 2);
+                    }
+                    KeyCode::Char('d') => {
+                        let log_height = self.get_log_height();
+                        self.down(log_height / 2);
+                    }
+                    KeyCode::Char('b') => {
+                        let log_height = self.get_log_height();
+                        self.up(log_height);
+                    }
+                    _ => {}
+                },
+                (KeyModifiers::NONE, key_code) => match key_code {
+                    KeyCode::Char('r') => {
+                        if let Some(focused_panel) = self.panels.get(&self.index) {
+                            focused_panel.command.do_send(Reload::Manual);
+                        }
+                    }
+                    KeyCode::Right | KeyCode::Char('l') => {
+                        self.next();
+                    }
+                    KeyCode::Left | KeyCode::Char('h') => {
+                        self.previous();
+                    }
+                    KeyCode::Char(ch) => {
+                        if ch.is_ascii_digit() {
+                            let mut panel_index = ch.to_digit(10).unwrap() as usize;
+                            // first tab is key 1, therefore
+                            // in key 0 go to last tab
+                            if panel_index == 0 {
+                                panel_index = self.order.len() - 1;
+                            } else {
+                                panel_index -= 1;
+                            }
+                            self.go_to(panel_index);
+                        }
+                    }
+                    _ => {}
+                },
                 _ => {}
             },
             Event::Resize(width, _) => {

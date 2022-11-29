@@ -238,28 +238,29 @@ impl Handler<TermEvent> for ConsoleActor {
     fn handle(&mut self, msg: TermEvent, _: &mut Context<Self>) -> Self::Result {
         match msg.0 {
             Event::Key(e) => match (e.modifiers, e.code) {
-                (KeyModifiers::CONTROL, KeyCode::Char('c')) | (_, KeyCode::Char('q')) => {
+                (KeyModifiers::CONTROL, KeyCode::Char('c'))
+                | (KeyModifiers::NONE, KeyCode::Char('q')) => {
                     self.panels
                         .values()
                         .for_each(|e| e.command.do_send(PoisonPill));
                     System::current().stop();
                 }
-                (_, KeyCode::Char('r')) => {
+                (KeyModifiers::NONE, KeyCode::Char('r')) => {
                     if let Some(focused_panel) = self.panels.get(&self.index) {
                         focused_panel.command.do_send(Reload::Manual);
                     }
                 }
-                (_, KeyCode::Right | KeyCode::Char('l')) => {
+                (KeyModifiers::NONE, KeyCode::Right | KeyCode::Char('l')) => {
                     self.next();
                 }
-                (_, KeyCode::Left | KeyCode::Char('h')) => {
+                (KeyModifiers::NONE, KeyCode::Left | KeyCode::Char('h')) => {
                     self.previous();
                 }
-                (_, KeyCode::Up | KeyCode::Char('k'))
+                (KeyModifiers::NONE, KeyCode::Up | KeyCode::Char('k'))
                 | (KeyModifiers::CONTROL, KeyCode::Char('p')) => {
                     self.up(1);
                 }
-                (_, KeyCode::Down | KeyCode::Char('j'))
+                (KeyModifiers::NONE, KeyCode::Down | KeyCode::Char('j'))
                 | (KeyModifiers::CONTROL, KeyCode::Char('n')) => {
                     self.down(1);
                 }

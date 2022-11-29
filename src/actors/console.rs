@@ -230,16 +230,18 @@ impl Handler<TermEvent> for ConsoleActor {
                         focus.command.do_send(Reload::Manual);
                     }
                 }
-                (_, KeyCode::Right) => {
+                (_, KeyCode::Right | KeyCode::Char('l')) => {
                     self.next();
                 }
-                (_, KeyCode::Left) => {
+                (_, KeyCode::Left | KeyCode::Char('h')) => {
                     self.previous();
                 }
-                (_, KeyCode::Up) => {
+                (_, KeyCode::Up | KeyCode::Char('k'))
+                | (KeyModifiers::CONTROL, KeyCode::Char('p')) => {
                     self.up();
                 }
-                (_, KeyCode::Down) => {
+                (_, KeyCode::Down | KeyCode::Char('j'))
+                | (KeyModifiers::CONTROL, KeyCode::Char('n')) => {
                     self.down();
                 }
                 _ => {}

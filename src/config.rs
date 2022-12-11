@@ -95,14 +95,15 @@ impl Config {
     pub fn filter_jobs(&mut self, run: &Vec<String>) -> Result<()> {
         for job_name in run {
             if self.ops.get(job_name).is_none() {
-                let formatted_list_of_jobs = self
+                let mut formatted_list_of_jobs = self
                     .ops
                     .iter()
                     .map(|(job_name, _)| format!("  - {job_name}"))
-                    .collect::<Vec<String>>()
-                    .join("\n");
+                    .collect::<Vec<String>>();
+                formatted_list_of_jobs.sort();
+                let formatted_list_of_jobs = formatted_list_of_jobs.join("\n");
                 let error_header = format!("job '{job_name}' not found in config file.");
-                let error_sugesstion = format!("Valid jobs are: \n{formatted_list_of_jobs}");
+                let error_sugesstion = format!("Valid jobs are:\n{formatted_list_of_jobs}");
                 let error_message = format!("{error_header}\n\n{error_sugesstion}");
                 bail!(error_message);
             }

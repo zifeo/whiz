@@ -1,6 +1,10 @@
-use std::{collections::HashMap, io, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    io,
+    str::FromStr,
+};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use indexmap::IndexMap;
 use serde::Deserialize;
 
@@ -79,6 +83,56 @@ impl Config {
         })?;
         let config: Config = serde_yaml::from_reader(file)?;
         Ok(config)
+    }
+
+    /// Filters the jobs to only the ones provided in `run`
+    /// and then recursively add their dependencies to be able
+    /// to run the filtered jobs.
+    ///
+    /// Doesn't filter if `run` is empty.
+    ///
+    /// Fails if a job in `run` is not set in the config file.
+    pub fn filter_jobs(&mut self, run: &Vec<String>) -> Result<()> {
+        for job_name in run {
+            if self.ops.get(job_name).is_none() {
+                let formatted_list_of_jobs = self
+                    .ops
+                    .iter()
+                    .map(|(job_name, _)| format!("  - {job_name}"))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                let error_header = format!("job '{job_name}' not found in config file.");
+                let error_sugesstion = format!("Valid jobs are: \n{formatted_list_of_jobs}");
+                let error_message = format!("{error_header}\n\n{error_sugesstion}");
+                bail!(error_message);
+            }
+        }
+
+        if !run.is_empty() {
+            let mut filtered_jobs: HashSet<String> = HashSet::new();
+            let mut job_dependencies: Vec<String> = run.clone();
+
+            while let Some(job_name) = job_dependencies.pop() {
+                let child_dependencies = self
+                    .ops
+                    .get(&job_name)
+                    .unwrap()
+                    .depends_on
+                    .resolve()
+                    .into_iter();
+                job_dependencies.extend(child_dependencies);
+                filtered_jobs.insert(job_name);
+            }
+
+            self.ops = self
+                .ops
+                .clone()
+                .into_iter()
+                .filter(|(job_name, _)| filtered_jobs.contains(job_name))
+                .collect();
+        }
+
+        Ok(())
     }
 
     pub fn build_dag(&self) -> Result<Dag> {

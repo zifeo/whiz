@@ -201,3 +201,77 @@ impl Config {
         Ok(dag)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod job_filtering {
+        use super::*;
+
+        const CONFIG_EXAMPLE: &str = r#"
+            not_test_dependency:
+                shell: echo fails
+
+            test_dependency:
+                shell: echo hello
+
+            test:
+                shell: echo world
+                depends_on:
+                    - test_dependency
+        "#;
+
+        #[test]
+        fn filters_jobs() {
+            let mut config: Config = CONFIG_EXAMPLE.parse().unwrap();
+            let run = &vec!["test".to_string()];
+
+            config.filter_jobs(run).unwrap();
+
+            let mut jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
+            let mut expected_jobs = vec!["test", "test_dependency"];
+
+            // sorting arrays because the order of the jobs after filtering does not matter
+            assert_eq!(jobs.sort(), expected_jobs.sort());
+        }
+
+        #[test]
+        fn fails_job_filtering() {
+            let mut config: Config = CONFIG_EXAMPLE.parse().unwrap();
+
+            let expected_err = vec![
+                "job 'doesnt_exist' not found in config file.",
+                "",
+                "Valid jobs are:",
+                "  - not_test_dependency",
+                "  - test",
+                "  - test_dependency",
+            ]
+            .join("\n");
+
+            let mut err_message = String::new();
+            let run = &vec!["doesnt_exist".to_string()];
+
+            if let Err(err) = config.filter_jobs(run) {
+                err_message = err.to_string();
+            };
+
+            assert_eq!(err_message, expected_err);
+        }
+
+        #[test]
+        fn doesnt_filter_jobs() {
+            let mut config: Config = CONFIG_EXAMPLE.parse().unwrap();
+            let run = &Vec::new();
+
+            config.filter_jobs(run).unwrap();
+
+            let mut jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
+            let mut expected_jobs = vec!["test", "test_dependency", "not_test_dependency"];
+
+            // sorting arrays because the order of the jobs after filtering does not matter
+            assert_eq!(jobs.sort(), expected_jobs.sort());
+        }
+    }
+}

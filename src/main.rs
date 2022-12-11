@@ -14,13 +14,13 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, value_parser, default_value = "whiz.yaml")]
+    #[clap(short, long, default_value = "whiz.yaml")]
     file: String,
 
-    #[clap(short, long, value_parser)]
+    #[clap(short, long)]
     verbose: bool,
 
-    #[clap(short, long, value_parser)]
+    #[clap(short, long)]
     timestamp: bool,
 }
 

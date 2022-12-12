@@ -1,12 +1,33 @@
 # Whiz
 
-Modern DAG/tasks runner.
+Modern [DAG](https://en.wikipedia.org/wiki/Directed_acyclic_graph)/tasks runner.
 
 ## Getting started
 
 ```
 cargo install --git https://github.com/zifeo/whiz --locked
 ```
+
+## Usage
+
+### passing list of values
+
+You can pass list of values for an option by repeating their flag
+
+```sh
+whiz --arg arg1 --arg arg2
+```
+
+## Flags
+
+| Flags             | Description                  |
+| ----------------- | ---------------------------- |
+| -f, --file        | specify the config file      |
+| -h, --help        | print help information       |
+| -r, --run \<JOB\> | run specific jobs            |
+| -t, --timestamp   | enable timestamps in logging |
+| -v, --verbose     | enable verbose mode          |
+| -V, --version     | print whiz version           |
 
 ## Key bindings
 
@@ -27,7 +48,7 @@ cargo install --git https://github.com/zifeo/whiz --locked
 
 ### actions
 
-| Keys       | Motion                            |
-| ---------- | --------------------------------- |
-| q, Ctl + c | exit the program                  |
-| r          | rerun the task in the current tab |
+| Keys       | Motion                           |
+| ---------- | -------------------------------- |
+| q, Ctl + c | exit the program                 |
+| r          | rerun the job in the current tab |

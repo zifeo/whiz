@@ -1,6 +1,10 @@
-use std::{collections::HashMap, io, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    io,
+    str::FromStr,
+};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use indexmap::IndexMap;
 use serde::Deserialize;
 
@@ -81,6 +85,57 @@ impl Config {
         Ok(config)
     }
 
+    /// Filters the jobs to only the ones provided in `run`
+    /// and then recursively add their dependencies to be able
+    /// to run the filtered jobs.
+    ///
+    /// Doesn't filter if `run` is empty.
+    ///
+    /// Fails if a job in `run` is not set in the config file.
+    pub fn filter_jobs(&mut self, run: &Vec<String>) -> Result<()> {
+        for job_name in run {
+            if self.ops.get(job_name).is_none() {
+                let mut formatted_list_of_jobs = self
+                    .ops
+                    .iter()
+                    .map(|(job_name, _)| format!("  - {job_name}"))
+                    .collect::<Vec<String>>();
+                formatted_list_of_jobs.sort();
+                let formatted_list_of_jobs = formatted_list_of_jobs.join("\n");
+                let error_header = format!("job '{job_name}' not found in config file.");
+                let error_suggestion = format!("Valid jobs are:\n{formatted_list_of_jobs}");
+                let error_message = format!("{error_header}\n\n{error_suggestion}");
+                bail!(error_message);
+            }
+        }
+
+        if !run.is_empty() {
+            let mut filtered_jobs: HashSet<String> = HashSet::new();
+            let mut job_dependencies: Vec<String> = run.clone();
+
+            while let Some(job_name) = job_dependencies.pop() {
+                let child_dependencies = self
+                    .ops
+                    .get(&job_name)
+                    .unwrap()
+                    .depends_on
+                    .resolve()
+                    .into_iter();
+                job_dependencies.extend(child_dependencies);
+                filtered_jobs.insert(job_name);
+            }
+
+            self.ops = self
+                .ops
+                .clone()
+                .into_iter()
+                .filter(|(job_name, _)| filtered_jobs.contains(job_name))
+                .collect();
+        }
+
+        Ok(())
+    }
+
     pub fn build_dag(&self) -> Result<Dag> {
         // views
         for (view_name, op_names) in self.views.iter() {
@@ -144,5 +199,79 @@ impl Config {
             .rev()
             .collect::<Dag>();
         Ok(dag)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod job_filtering {
+        use super::*;
+
+        const CONFIG_EXAMPLE: &str = r#"
+            not_test_dependency:
+                shell: echo fails
+
+            test_dependency:
+                shell: echo hello
+
+            test:
+                shell: echo world
+                depends_on:
+                    - test_dependency
+        "#;
+
+        #[test]
+        fn filters_jobs() {
+            let mut config: Config = CONFIG_EXAMPLE.parse().unwrap();
+            let run = &vec!["test".to_string()];
+
+            config.filter_jobs(run).unwrap();
+
+            let mut jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
+            let mut expected_jobs = vec!["test", "test_dependency"];
+
+            // sorting arrays because the order of the jobs after filtering does not matter
+            assert_eq!(jobs.sort(), expected_jobs.sort());
+        }
+
+        #[test]
+        fn fails_job_filtering() {
+            let mut config: Config = CONFIG_EXAMPLE.parse().unwrap();
+
+            let expected_err = vec![
+                "job 'doesnt_exist' not found in config file.",
+                "",
+                "Valid jobs are:",
+                "  - not_test_dependency",
+                "  - test",
+                "  - test_dependency",
+            ]
+            .join("\n");
+
+            let mut err_message = String::new();
+            let run = &vec!["doesnt_exist".to_string()];
+
+            if let Err(err) = config.filter_jobs(run) {
+                err_message = err.to_string();
+            };
+
+            assert_eq!(err_message, expected_err);
+        }
+
+        #[test]
+        fn doesnt_filter_jobs() {
+            let mut config: Config = CONFIG_EXAMPLE.parse().unwrap();
+            let run = &Vec::new();
+
+            config.filter_jobs(run).unwrap();
+
+            let mut jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
+            let mut expected_jobs = vec!["test", "test_dependency", "not_test_dependency"];
+
+            // sorting arrays because the order of the jobs after filtering does not matter
+            assert_eq!(jobs.sort(), expected_jobs.sort());
+        }
     }
 }

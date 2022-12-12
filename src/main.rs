@@ -14,20 +14,24 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, value_parser, default_value = "whiz.yaml")]
+    #[clap(short, long, default_value = "whiz.yaml")]
     file: String,
 
-    #[clap(short, long, value_parser)]
+    #[clap(short, long)]
     verbose: bool,
 
-    #[clap(short, long, value_parser)]
+    #[clap(short, long)]
     timestamp: bool,
+
+    /// Run specific jobs
+    #[clap(short, long, value_name = "JOB")]
+    run: Vec<String>,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let config = match Config::from_file(&args.file) {
+    let mut config = match Config::from_file(&args.file) {
         Ok(conf) => conf,
         Err(err) => {
             println!("file error: {}", err);
@@ -35,9 +39,14 @@ fn main() -> Result<()> {
         }
     };
 
+    if let Err(err) = config.filter_jobs(&args.run) {
+        println!("argument error: {}", err);
+        process::exit(2);
+    };
+
     if let Err(err) = config.build_dag() {
         println!("config error: {}", err);
-        process::exit(2);
+        process::exit(3);
     };
 
     let base_dir = env::current_dir()?

@@ -103,8 +103,8 @@ impl Config {
                 formatted_list_of_jobs.sort();
                 let formatted_list_of_jobs = formatted_list_of_jobs.join("\n");
                 let error_header = format!("job '{job_name}' not found in config file.");
-                let error_sugesstion = format!("Valid jobs are:\n{formatted_list_of_jobs}");
-                let error_message = format!("{error_header}\n\n{error_sugesstion}");
+                let error_suggestion = format!("Valid jobs are:\n{formatted_list_of_jobs}");
+                let error_message = format!("{error_header}\n\n{error_suggestion}");
                 bail!(error_message);
             }
         }

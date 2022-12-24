@@ -15,8 +15,8 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, default_value = "")]
-    file: String,
+    #[clap(short, long)]
+    file: Option<String>,
 
     #[clap(short, long)]
     verbose: bool,
@@ -30,14 +30,14 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    let mut args = Args::parse();
-    if args.file.is_empty() {
-        args.file = recurse_default_config("whiz.yaml");
-    }
+    let args = Args::parse();
     
-    let args = args;
+    let config_file = match args.file {
+        None => recurse_default_config("whiz.yaml"),
+        _ => args.file.unwrap()
+    };
 
-    let mut config = match Config::from_file(&args.file) {
+    let mut config = match Config::from_file(&config_file) {
         Ok(conf) => conf,
         Err(err) => {
             println!("file error: {}", err);
@@ -56,7 +56,7 @@ fn main() -> Result<()> {
     };
 
     let base_dir = env::current_dir()?
-        .join(args.file)
+        .join(config_file)
         .parent()
         .unwrap()
         .to_path_buf();

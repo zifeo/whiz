@@ -2,6 +2,7 @@ use actix::prelude::*;
 use whiz::{
     actors::{command::CommandActor, console::ConsoleActor, watcher::WatcherActor},
     config::Config,
+    utils::recurse_default_config
 };
 
 use anyhow::Result;
@@ -14,7 +15,7 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, default_value = "whiz.yaml")]
+    #[clap(short, long, default_value = "")]
     file: String,
 
     #[clap(short, long)]
@@ -29,7 +30,12 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    let mut args = Args::parse();
+    if args.file.is_empty() {
+        args.file = recurse_default_config("whiz.yaml");
+    }
+    
+    let args = args;
 
     let mut config = match Config::from_file(&args.file) {
         Ok(conf) => conf,

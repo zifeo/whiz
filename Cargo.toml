@@ -7,21 +7,21 @@ license = "MPL-2.0"
 
 [dependencies]
 actix = "0.13.0"
-ansi-to-tui = "1.0.1"
-anyhow = "1.0.60"
-chrono = "0.4.19"
-clap = { version = "3.2.13", features = ["derive"] }
+ansi-to-tui = "2.0.0"
+anyhow = "1.0.68"
+chrono = "0.4.23"
+clap = { version = "4.0.32", features = ["derive"] }
 crossterm = "0.25.0"
 globset = "0.4.9"
 ignore = "0.4.18"
-indexmap = { version = "1.9.1", features = ["serde"] }
-notify = "5.0.0-pre.15"
-path-absolutize = "3.0.13"
+indexmap = { version = "1.9.2", features = ["serde"] }
+notify = "5.0.0"
+path-absolutize = "3.0.14"
 path-clean = "0.1.0"
-regex = "1.6.0"
-serde = { version = "1.0.139", features = ["derive"] }
-serde_yaml = "0.9.4"
+regex = "1.7.0"
+serde = { version = "1.0.152", features = ["derive"] }
+serde_yaml = "0.9.16"
 strip-ansi-escapes = "0.1.1"
 subprocess = "0.2.9"
-textwrap = "0.15.0"
-tui = "0.18.0"
+textwrap = "0.16.0"
+tui = "0.19.0"

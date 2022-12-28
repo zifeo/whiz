@@ -96,7 +96,7 @@ fn config_search_recursive() {
             .display()
             .to_string();
     
-    // change current working directory
+    // change current working directory to {root_app}/src
     assert!(env::set_current_dir(Path::new("src")).is_ok());
     assert!(env::current_dir().is_ok());
 
@@ -109,18 +109,28 @@ fn config_search_recursive() {
             .to_string();
     println!(" Working directory set to {}", new_cwd);
 
-    // reset cwd to be safe
-    assert!(env::set_current_dir(Path::new(&previous_cwd)).is_ok());
-    println!(" Working directory reset to {}", previous_cwd);
-
     let config_name = "whiz.yaml";
     let expected_if_exist = 
         Path::new(&new_cwd)
             .join(&config_name)
             .display()
             .to_string();
+    
     let config_got = recurse_default_config(config_name);
+    assert!(config_got.is_ok());
 
+    let config_got = 
+        config_got
+            .unwrap()
+            .display()
+            .to_string();
+    
+    println!(" Config file located at {}", config_got);
     println!(" Path \"{}\" should be different from \"{}\"", config_got, expected_if_exist);
     assert_ne!(config_got, expected_if_exist);
+
+    // reset cwd to be safe
+    assert!(env::set_current_dir(Path::new(&previous_cwd)).is_ok());
+    println!(" Working directory reset to {}", previous_cwd);
+    
 }

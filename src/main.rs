@@ -31,11 +31,21 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    
+
+    let default_file = "whiz.yaml";
     let config_file = match args.file {
-        None => recurse_default_config("whiz.yaml"),
-        _ => args.file.unwrap()
+        Some(given_path) => given_path,
+        None => {
+            match recurse_default_config(default_file) {
+                Ok(path) => path.display().to_string(),
+                Err(err) => {
+                    println!("file error: {}", err);
+                    process::exit(1);
+                },
+            }
+        }
     };
+
 
     let mut config = match Config::from_file(&config_file) {
         Ok(conf) => conf,

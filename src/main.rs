@@ -41,7 +41,7 @@ fn main() -> Result<()> {
                 Err(err) => {
                     println!("file error: {}", err);
                     process::exit(1);
-                },
+                }
             }
         }
     };

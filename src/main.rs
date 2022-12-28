@@ -51,18 +51,18 @@ fn main() -> Result<()> {
         Ok(conf) => conf,
         Err(err) => {
             println!("file error: {}", err);
-            process::exit(1);
+            process::exit(2);
         }
     };
 
     if let Err(err) = config.filter_jobs(&args.run) {
         println!("argument error: {}", err);
-        process::exit(2);
+        process::exit(3);
     };
 
     if let Err(err) = config.build_dag() {
         println!("config error: {}", err);
-        process::exit(3);
+        process::exit(4);
     };
 
     let base_dir = env::current_dir()?

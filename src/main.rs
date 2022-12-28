@@ -2,6 +2,7 @@ use actix::prelude::*;
 use whiz::{
     actors::{command::CommandActor, console::ConsoleActor, watcher::WatcherActor},
     config::Config,
+    utils::recurse_default_config
 };
 
 use anyhow::Result;
@@ -14,8 +15,8 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, default_value = "whiz.yaml")]
-    file: String,
+    #[clap(short, long)]
+    file: Option<String>,
 
     #[clap(short, long)]
     verbose: bool,
@@ -31,26 +32,41 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let mut config = match Config::from_file(&args.file) {
+    let default_file = "whiz.yaml";
+    let config_file = match args.file {
+        Some(given_path) => given_path,
+        None => {
+            match recurse_default_config(default_file) {
+                Ok(path) => path.display().to_string(),
+                Err(err) => {
+                    println!("file error: {}", err);
+                    process::exit(1);
+                }
+            }
+        }
+    };
+
+
+    let mut config = match Config::from_file(&config_file) {
         Ok(conf) => conf,
         Err(err) => {
             println!("file error: {}", err);
-            process::exit(1);
+            process::exit(2);
         }
     };
 
     if let Err(err) = config.filter_jobs(&args.run) {
         println!("argument error: {}", err);
-        process::exit(2);
+        process::exit(3);
     };
 
     if let Err(err) = config.build_dag() {
         println!("config error: {}", err);
-        process::exit(3);
+        process::exit(4);
     };
 
     let base_dir = env::current_dir()?
-        .join(args.file)
+        .join(config_file)
         .parent()
         .unwrap()
         .to_path_buf();

@@ -261,6 +261,21 @@ impl Config {
 mod tests {
     use super::*;
 
+    /// Asserts if two arrays are equal without taking into account the order.
+    macro_rules! assert_array_not_strict {
+        ($left:expr, $right:expr) => {
+            match (&$left, &$right) {
+                (left_val, right_val) => {
+                    let mut v1 = left_val.clone();
+                    v1.sort();
+                    let mut v2 = right_val.clone();
+                    v2.sort();
+                    assert_eq!(v1, v2);
+                }
+            };
+        };
+    }
+
     mod dependencies {
         use super::*;
 
@@ -304,28 +319,20 @@ mod tests {
             let config: Config = CONFIG_EXAMPLE.parse().unwrap();
             let jobs = &["c".to_string(), "z".to_string()];
 
-            let mut jobs = config.get_all_dependencies(jobs);
-            let mut expected_jobs = vec!["a", "b", "y"];
+            let jobs = config.get_all_dependencies(jobs);
+            let expected_jobs = vec!["a", "b", "y"];
 
-            // sorting arrays because the order does not matter
-            jobs.sort();
-            expected_jobs.sort();
-
-            assert_eq!(jobs, expected_jobs);
+            assert_array_not_strict!(jobs, expected_jobs);
         }
 
         #[test]
         fn gets_dependencies_from_config_file() {
             let config: Config = CONFIG_EXAMPLE.parse().unwrap();
 
-            let mut jobs = config.get_dependencies("c");
-            let mut expected_jobs = vec!["b"];
+            let jobs = config.get_dependencies("c");
+            let expected_jobs = vec!["b"];
 
-            // sorting arrays because the order does not matter
-            jobs.sort();
-            expected_jobs.sort();
-
-            assert_eq!(jobs, expected_jobs);
+            assert_array_not_strict!(jobs, expected_jobs);
         }
 
         #[test]
@@ -335,14 +342,10 @@ mod tests {
 
             let job_d = config.ops.get("d").unwrap();
 
-            let mut dependencies_d = job_d.depends_on.resolve();
-            let mut expected_dependencies = vec!["c", "z"];
+            let dependencies_d = job_d.depends_on.resolve();
+            let expected_dependencies = vec!["c", "z"];
 
-            // sorting arrays because the order does not matter
-            dependencies_d.sort();
-            expected_dependencies.sort();
-
-            assert_eq!(dependencies_d, expected_dependencies);
+            assert_array_not_strict!(dependencies_d, expected_dependencies);
         }
     }
 
@@ -369,14 +372,10 @@ mod tests {
 
             config.filter_jobs(run).unwrap();
 
-            let mut jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
-            let mut expected_jobs = vec!["test", "test_dependency"];
+            let jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
+            let expected_jobs = vec!["test", "test_dependency"];
 
-            // sorting arrays because the order of the jobs after filtering does not matter
-            jobs.sort();
-            expected_jobs.sort();
-
-            assert_eq!(jobs, expected_jobs);
+            assert_array_not_strict!(jobs, expected_jobs);
         }
 
         #[test]
@@ -410,14 +409,10 @@ mod tests {
 
             config.filter_jobs(run).unwrap();
 
-            let mut jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
-            let mut expected_jobs = vec!["test", "test_dependency", "not_test_dependency"];
+            let jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
+            let expected_jobs = vec!["test", "test_dependency", "not_test_dependency"];
 
-            // sorting arrays because the order of the jobs after filtering does not matter
-            jobs.sort();
-            expected_jobs.sort();
-
-            assert_eq!(jobs, expected_jobs);
+            assert_array_not_strict!(jobs, expected_jobs);
         }
     }
 }

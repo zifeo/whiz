@@ -2,7 +2,7 @@ use actix::prelude::*;
 use whiz::{
     actors::{command::CommandActor, console::ConsoleActor, watcher::WatcherActor},
     config::Config,
-    utils::recurse_default_config
+    utils::recurse_default_config,
 };
 
 use anyhow::Result;
@@ -35,17 +35,14 @@ fn main() -> Result<()> {
     let default_file = "whiz.yaml";
     let config_file = match args.file {
         Some(given_path) => given_path,
-        None => {
-            match recurse_default_config(default_file) {
-                Ok(path) => path.display().to_string(),
-                Err(err) => {
-                    println!("file error: {}", err);
-                    process::exit(1);
-                }
+        None => match recurse_default_config(default_file) {
+            Ok(path) => path.display().to_string(),
+            Err(err) => {
+                println!("file error: {}", err);
+                process::exit(1);
             }
-        }
+        },
     };
-
 
     let mut config = match Config::from_file(&config_file) {
         Ok(conf) => conf,

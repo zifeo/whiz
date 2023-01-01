@@ -140,7 +140,7 @@ impl ConsoleActor {
                     let chunks = chunks(f);
                     let logs = &focused_panel.logs;
 
-                    let log_height = chunks[0].height as u16;
+                    let log_height = chunks[0].height;
                     let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
 
                     let lines: Vec<Spans> = logs
@@ -304,7 +304,8 @@ impl Handler<TermEvent> for ConsoleActor {
             Event::Resize(width, _) => {
                 for panel in self.panels.values_mut() {
                     panel.shift = 0;
-                    let new_lines = (&panel.logs)
+                    let new_lines = panel
+                        .logs
                         .iter()
                         .fold(0, |agg, l| agg + wrapped_lines(&l.0, width));
                     panel.lines = new_lines;

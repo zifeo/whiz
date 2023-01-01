@@ -27,6 +27,10 @@ struct Args {
     /// Run specific jobs
     #[clap(short, long, value_name = "JOB")]
     run: Vec<String>,
+
+    /// List all the jobs set in the config file
+    #[clap(long)]
+    list_jobs: bool,
 }
 
 fn main() -> Result<()> {
@@ -63,6 +67,12 @@ fn main() -> Result<()> {
     };
 
     config.simplify_dependencies();
+
+    if args.list_jobs {
+        let formatted_list_of_jobs = config.get_formatted_list_of_jobs();
+        println!("List of jobs:\n{formatted_list_of_jobs}");
+        process::exit(0);
+    }
 
     let base_dir = env::current_dir()?
         .join(config_file)

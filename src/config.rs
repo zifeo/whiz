@@ -95,13 +95,7 @@ impl Config {
     pub fn filter_jobs(&mut self, run: &Vec<String>) -> Result<()> {
         for job_name in run {
             if self.ops.get(job_name).is_none() {
-                let mut formatted_list_of_jobs = self
-                    .ops
-                    .iter()
-                    .map(|(job_name, _)| format!("  - {job_name}"))
-                    .collect::<Vec<String>>();
-                formatted_list_of_jobs.sort();
-                let formatted_list_of_jobs = formatted_list_of_jobs.join("\n");
+                let formatted_list_of_jobs = self.get_formatted_list_of_jobs();
                 let error_header = format!("job '{job_name}' not found in config file.");
                 let error_suggestion = format!("Valid jobs are:\n{formatted_list_of_jobs}");
                 let error_message = format!("{error_header}\n\n{error_suggestion}");
@@ -210,6 +204,32 @@ impl Config {
     /// Returns the list of dependencies of a job defined in the config file.
     pub fn get_dependencies(&self, job_name: &str) -> Vec<String> {
         self.ops.get(job_name).unwrap().depends_on.resolve()
+    }
+
+    /// Returns the list of all the jobs set in the config file and
+    /// their dependencies in a simplified version.
+    pub fn get_formatted_list_of_jobs(&self) -> String {
+        let mut formatted_list_of_jobs: Vec<String> = self
+            .get_jobs()
+            .iter()
+            .map(|job_name| {
+                let dependencies = self.get_dependencies(job_name);
+                let mut formatted_job = format!("  - {job_name}");
+
+                if !dependencies.is_empty() {
+                    formatted_job += &format!(" ({})", dependencies.join(","));
+                }
+
+                formatted_job
+            })
+            .collect();
+        formatted_list_of_jobs.sort();
+        formatted_list_of_jobs.join("\n")
+    }
+
+    /// Returns the list of all the jobs defined in the config file.
+    pub fn get_jobs(&self) -> Vec<&String> {
+        self.ops.iter().map(|(job_name, _)| job_name).collect()
     }
 
     /// Remove dependencies that are child of another dependency for
@@ -368,7 +388,7 @@ mod tests {
                 "",
                 "Valid jobs are:",
                 "  - not_test_dependency",
-                "  - test",
+                "  - test (test_dependency)",
                 "  - test_dependency",
             ]
             .join("\n");

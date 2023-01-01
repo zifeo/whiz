@@ -14,7 +14,7 @@ use crate::{
         watcher::WatcherActor,
     },
     config::Config,
-    utils::recurse_default_config,
+    utils::recurse_config_file,
 };
 use actix::{actors::mocker::Mocker, prelude::*};
 
@@ -102,17 +102,18 @@ fn config_search_recursive() {
     let config_name = "whiz.yaml";
     let expected_if_exist = Path::new(&new_cwd).join(&config_name).display().to_string();
 
-    let config_got = recurse_default_config(config_name);
+    let config_got = recurse_config_file(config_name);
     assert!(config_got.is_ok());
 
-    let config_got = config_got.unwrap().display().to_string();
+    let (_, config_path) = config_got.unwrap();
+    let config_path_got = config_path.display().to_string();
 
-    println!(" Config file located at {}", config_got);
+    println!(" Config file located at {}", config_path_got);
     println!(
         " Path \"{}\" should be different from \"{}\"",
-        config_got, expected_if_exist
+        config_path_got, expected_if_exist
     );
-    assert_ne!(config_got, expected_if_exist);
+    assert_ne!(config_path_got, expected_if_exist);
 
     // reset cwd to be safe
     assert!(env::set_current_dir(Path::new(&previous_cwd)).is_ok());

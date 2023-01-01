@@ -1,5 +1,6 @@
 use std::{
     env,
+    fs::File,
     io::{Error, ErrorKind},
     path::{Path, PathBuf},
 };
@@ -24,7 +25,10 @@ pub fn find_config_path(location: &Path, config_name: &str) -> Result<PathBuf, s
     }
 }
 
-pub fn recurse_default_config(config_name: &str) -> Result<PathBuf, std::io::Error> {
+pub fn recurse_config_file(config_name: &str) -> Result<(File, PathBuf), anyhow::Error> {
     let cwd = env::current_dir().unwrap();
-    find_config_path(cwd.as_path(), config_name)
+    let path = find_config_path(cwd.as_path(), config_name)?;
+    let config_file = File::open(&path).unwrap();
+
+    Ok((config_file, path))
 }

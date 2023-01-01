@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    io,
     str::FromStr,
 };
 
@@ -76,12 +75,13 @@ impl FromStr for Config {
 }
 
 impl Config {
-    pub fn from_file(path: &str) -> Result<Config> {
-        let file = File::open(path).map_err(|err| match err.kind() {
-            io::ErrorKind::NotFound => anyhow!("file {} not found", path),
-            _ => anyhow!(err.to_string()),
-        })?;
-        let config: Config = serde_yaml::from_reader(file)?;
+    pub fn from_file(file: &File) -> Result<Config> {
+        let mut config: Config = serde_yaml::from_reader(file)?;
+
+        // make sure config file is a `Directed Acyclic Graph`
+        config.build_dag()?;
+
+        config.simplify_dependencies();
         Ok(config)
     }
 

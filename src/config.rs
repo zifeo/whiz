@@ -233,7 +233,10 @@ mod tests {
             let mut expected_jobs = vec!["test", "test_dependency"];
 
             // sorting arrays because the order of the jobs after filtering does not matter
-            assert_eq!(jobs.sort(), expected_jobs.sort());
+            jobs.sort();
+            expected_jobs.sort();
+
+            assert_eq!(jobs, expected_jobs);
         }
 
         #[test]
@@ -271,7 +274,10 @@ mod tests {
             let mut expected_jobs = vec!["test", "test_dependency", "not_test_dependency"];
 
             // sorting arrays because the order of the jobs after filtering does not matter
-            assert_eq!(jobs.sort(), expected_jobs.sort());
+            jobs.sort();
+            expected_jobs.sort();
+
+            assert_eq!(jobs, expected_jobs);
         }
     }
 }

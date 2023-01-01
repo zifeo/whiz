@@ -110,21 +110,9 @@ impl Config {
         }
 
         if !run.is_empty() {
-            let mut filtered_jobs: HashSet<String> = HashSet::new();
-            let mut job_dependencies: Vec<String> = run.clone();
-
-            while let Some(job_name) = job_dependencies.pop() {
-                let child_dependencies = self
-                    .ops
-                    .get(&job_name)
-                    .unwrap()
-                    .depends_on
-                    .resolve()
-                    .into_iter();
-                job_dependencies.extend(child_dependencies);
-                filtered_jobs.insert(job_name);
-            }
-
+            let mut filtered_jobs = self.get_all_dependencies(run);
+            filtered_jobs.extend(run.clone().into_iter());
+            let filtered_jobs: HashSet<String> = HashSet::from_iter(filtered_jobs.into_iter());
             self.ops = self
                 .ops
                 .clone()
@@ -165,11 +153,7 @@ impl Config {
         while !poll.is_empty() {
             let (satisfied, missing): (Vec<&String>, Vec<&String>) =
                 poll.into_iter().partition(|&item| {
-                    self.ops
-                        .get(item)
-                        .unwrap()
-                        .depends_on
-                        .resolve()
+                    self.get_dependencies(item)
                         .iter()
                         .all(|p| order.contains(p))
                 });
@@ -200,11 +184,97 @@ impl Config {
             .collect::<Dag>();
         Ok(dag)
     }
+
+    /// Returns a list of all the dependencies of a list of jobs, and
+    /// the children dependencies of each dependency recursively.
+    pub fn get_all_dependencies(&self, jobs: &[String]) -> Vec<String> {
+        let mut job_dependencies = Vec::new();
+        let mut all_dependencies = Vec::new();
+
+        // add initial dependencies
+        for job_name in jobs {
+            let child_dependencies = self.get_dependencies(job_name);
+            job_dependencies.extend(child_dependencies.into_iter());
+        }
+
+        // add child dependencies recursively
+        while let Some(job_name) = job_dependencies.pop() {
+            let child_dependencies = self.get_dependencies(&job_name);
+            job_dependencies.extend(child_dependencies.into_iter());
+            all_dependencies.push(job_name);
+        }
+
+        all_dependencies
+    }
+
+    /// Returns the list of dependencies of a job defined in the config file.
+    pub fn get_dependencies(&self, job_name: &str) -> Vec<String> {
+        self.ops.get(job_name).unwrap().depends_on.resolve()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod dependencies {
+        use super::*;
+
+        const CONFIG_EXAMPLE: &str = r#"
+            a:
+                shell: echo a
+
+            b:
+                shell: echo b
+                depends_on: 
+                    - a
+
+            c:
+                shell: echo c
+                depends_on:
+                    - b
+
+            y:
+                shell: echo y
+
+            z:
+                shell: echo z
+                depends_on:
+                    - y
+
+            not_child_dependency:
+                shell: echo hello world
+        "#;
+
+        #[test]
+        fn gets_all_dependencies() {
+            let config: Config = CONFIG_EXAMPLE.parse().unwrap();
+            let jobs = &["c".to_string(), "z".to_string()];
+
+            let mut jobs = config.get_all_dependencies(jobs);
+            let mut expected_jobs = vec!["a", "b", "y"];
+
+            // sorting arrays because the order does not matter
+            jobs.sort();
+            expected_jobs.sort();
+
+            assert_eq!(jobs, expected_jobs);
+        }
+
+        #[test]
+        fn gets_dependencies_from_config_file() {
+            let config: Config = CONFIG_EXAMPLE.parse().unwrap();
+
+            let mut jobs = config.get_dependencies("c");
+            let mut expected_jobs = vec!["b"];
+
+            // sorting arrays because the order does not matter
+            jobs.sort();
+            expected_jobs.sort();
+
+            assert_eq!(jobs, expected_jobs);
+        }
+    }
 
     mod job_filtering {
         use super::*;

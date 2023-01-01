@@ -62,6 +62,8 @@ fn main() -> Result<()> {
         process::exit(4);
     };
 
+    config.simplify_dependencies();
+
     let base_dir = env::current_dir()?
         .join(config_file)
         .parent()

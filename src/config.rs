@@ -211,6 +211,30 @@ impl Config {
     pub fn get_dependencies(&self, job_name: &str) -> Vec<String> {
         self.ops.get(job_name).unwrap().depends_on.resolve()
     }
+
+    /// Remove dependencies that are child of another dependency for
+    /// the same job.
+    pub fn simplify_dependencies(&mut self) {
+        let jobs = self.ops.clone().into_iter().map(|(job_name, _)| job_name);
+        for job_name in jobs {
+            // array used to iterate all the elements and skip removed elements
+            let mut dependencies = self.get_dependencies(&job_name);
+            let mut simplified_dependencies = dependencies.clone();
+
+            while let Some(dependency) = dependencies.pop() {
+                let child_dependencies = &self.get_all_dependencies(&[dependency.to_owned()]);
+                let child_dependencies: HashSet<&String> =
+                    HashSet::from_iter(child_dependencies.iter());
+                // remove all the dependencies that are dependency
+                // of the current `dependency`
+                dependencies.retain(|job_name| !child_dependencies.contains(job_name));
+                simplified_dependencies.retain(|job_name| !child_dependencies.contains(job_name));
+            }
+
+            let job_operator = self.ops.get_mut(&job_name).unwrap();
+            job_operator.depends_on = Lift::More(simplified_dependencies);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -233,6 +257,15 @@ mod tests {
                 shell: echo c
                 depends_on:
                     - b
+
+            d:
+                shell: echo c
+                depends_on:
+                    - a
+                    - b
+                    - c
+                    - y
+                    - z
 
             y:
                 shell: echo y
@@ -273,6 +306,23 @@ mod tests {
             expected_jobs.sort();
 
             assert_eq!(jobs, expected_jobs);
+        }
+
+        #[test]
+        fn simplifies_dependencies() {
+            let mut config: Config = CONFIG_EXAMPLE.parse().unwrap();
+            config.simplify_dependencies();
+
+            let job_d = config.ops.get("d").unwrap();
+
+            let mut dependencies_d = job_d.depends_on.resolve();
+            let mut expected_dependencies = vec!["c", "z"];
+
+            // sorting arrays because the order does not matter
+            dependencies_d.sort();
+            expected_dependencies.sort();
+
+            assert_eq!(dependencies_d, expected_dependencies);
         }
     }
 

@@ -6,7 +6,6 @@ use whiz::{
 };
 
 use anyhow::Result;
-use std::env;
 
 use std::process;
 
@@ -65,17 +64,13 @@ fn main() -> Result<()> {
         process::exit(0);
     }
 
-    let base_dir = env::current_dir()?
-        .join(config_path)
-        .parent()
-        .unwrap()
-        .to_path_buf();
+    let base_dir = config_path.parent().unwrap().to_path_buf();
 
     let system = System::new();
     let exec = async move {
         let console =
             ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned()), args.timestamp).start();
-        let watcher = WatcherActor::new().start();
+        let watcher = WatcherActor::new(base_dir.clone()).start();
         CommandActor::from_config(&config, console, watcher, base_dir.clone(), args.verbose);
     };
 

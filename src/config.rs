@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    io,
     str::FromStr,
 };
 
@@ -76,12 +75,13 @@ impl FromStr for Config {
 }
 
 impl Config {
-    pub fn from_file(path: &str) -> Result<Config> {
-        let file = File::open(path).map_err(|err| match err.kind() {
-            io::ErrorKind::NotFound => anyhow!("file {} not found", path),
-            _ => anyhow!(err.to_string()),
-        })?;
-        let config: Config = serde_yaml::from_reader(file)?;
+    pub fn from_file(file: &File) -> Result<Config> {
+        let mut config: Config = serde_yaml::from_reader(file)?;
+
+        // make sure config file is a `Directed Acyclic Graph`
+        config.build_dag()?;
+
+        config.simplify_dependencies();
         Ok(config)
     }
 
@@ -95,13 +95,7 @@ impl Config {
     pub fn filter_jobs(&mut self, run: &Vec<String>) -> Result<()> {
         for job_name in run {
             if self.ops.get(job_name).is_none() {
-                let mut formatted_list_of_jobs = self
-                    .ops
-                    .iter()
-                    .map(|(job_name, _)| format!("  - {job_name}"))
-                    .collect::<Vec<String>>();
-                formatted_list_of_jobs.sort();
-                let formatted_list_of_jobs = formatted_list_of_jobs.join("\n");
+                let formatted_list_of_jobs = self.get_formatted_list_of_jobs();
                 let error_header = format!("job '{job_name}' not found in config file.");
                 let error_suggestion = format!("Valid jobs are:\n{formatted_list_of_jobs}");
                 let error_message = format!("{error_header}\n\n{error_suggestion}");
@@ -110,21 +104,9 @@ impl Config {
         }
 
         if !run.is_empty() {
-            let mut filtered_jobs: HashSet<String> = HashSet::new();
-            let mut job_dependencies: Vec<String> = run.clone();
-
-            while let Some(job_name) = job_dependencies.pop() {
-                let child_dependencies = self
-                    .ops
-                    .get(&job_name)
-                    .unwrap()
-                    .depends_on
-                    .resolve()
-                    .into_iter();
-                job_dependencies.extend(child_dependencies);
-                filtered_jobs.insert(job_name);
-            }
-
+            let mut filtered_jobs = self.get_all_dependencies(run);
+            filtered_jobs.extend(run.clone().into_iter());
+            let filtered_jobs: HashSet<String> = HashSet::from_iter(filtered_jobs.into_iter());
             self.ops = self
                 .ops
                 .clone()
@@ -165,11 +147,7 @@ impl Config {
         while !poll.is_empty() {
             let (satisfied, missing): (Vec<&String>, Vec<&String>) =
                 poll.into_iter().partition(|&item| {
-                    self.ops
-                        .get(item)
-                        .unwrap()
-                        .depends_on
-                        .resolve()
+                    self.get_dependencies(item)
                         .iter()
                         .all(|p| order.contains(p))
                 });
@@ -200,11 +178,176 @@ impl Config {
             .collect::<Dag>();
         Ok(dag)
     }
+
+    /// Returns a list of all the dependencies of a list of jobs, and
+    /// the children dependencies of each dependency recursively.
+    pub fn get_all_dependencies(&self, jobs: &[String]) -> Vec<String> {
+        let mut job_dependencies = Vec::new();
+        let mut all_dependencies = Vec::new();
+
+        // add initial dependencies
+        for job_name in jobs {
+            let child_dependencies = self.get_dependencies(job_name);
+            job_dependencies.extend(child_dependencies.into_iter());
+        }
+
+        // add child dependencies recursively
+        while let Some(job_name) = job_dependencies.pop() {
+            let child_dependencies = self.get_dependencies(&job_name);
+            job_dependencies.extend(child_dependencies.into_iter());
+            all_dependencies.push(job_name);
+        }
+
+        all_dependencies
+    }
+
+    /// Returns the list of dependencies of a job defined in the config file.
+    pub fn get_dependencies(&self, job_name: &str) -> Vec<String> {
+        self.ops.get(job_name).unwrap().depends_on.resolve()
+    }
+
+    /// Returns the list of all the jobs set in the config file and
+    /// their dependencies in a simplified version.
+    pub fn get_formatted_list_of_jobs(&self) -> String {
+        let mut formatted_list_of_jobs: Vec<String> = self
+            .get_jobs()
+            .iter()
+            .map(|job_name| {
+                let dependencies = self.get_dependencies(job_name);
+                let mut formatted_job = format!("  - {job_name}");
+
+                if !dependencies.is_empty() {
+                    formatted_job += &format!(" ({})", dependencies.join(","));
+                }
+
+                formatted_job
+            })
+            .collect();
+        formatted_list_of_jobs.sort();
+        formatted_list_of_jobs.join("\n")
+    }
+
+    /// Returns the list of all the jobs defined in the config file.
+    pub fn get_jobs(&self) -> Vec<&String> {
+        self.ops.iter().map(|(job_name, _)| job_name).collect()
+    }
+
+    /// Remove dependencies that are child of another dependency for
+    /// the same job.
+    pub fn simplify_dependencies(&mut self) {
+        let jobs = self.ops.clone().into_iter().map(|(job_name, _)| job_name);
+        for job_name in jobs {
+            // array used to iterate all the elements and skip removed elements
+            let mut dependencies = self.get_dependencies(&job_name);
+            let mut simplified_dependencies = dependencies.clone();
+
+            while let Some(dependency) = dependencies.pop() {
+                let child_dependencies = &self.get_all_dependencies(&[dependency.to_owned()]);
+                let child_dependencies: HashSet<&String> =
+                    HashSet::from_iter(child_dependencies.iter());
+                // remove all the dependencies that are dependency
+                // of the current `dependency`
+                dependencies.retain(|job_name| !child_dependencies.contains(job_name));
+                simplified_dependencies.retain(|job_name| !child_dependencies.contains(job_name));
+            }
+
+            let job_operator = self.ops.get_mut(&job_name).unwrap();
+            job_operator.depends_on = Lift::More(simplified_dependencies);
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Asserts if two arrays are equal without taking into account the order.
+    macro_rules! assert_array_not_strict {
+        ($left:expr, $right:expr) => {
+            match (&$left, &$right) {
+                (left_val, right_val) => {
+                    let mut v1 = left_val.clone();
+                    v1.sort();
+                    let mut v2 = right_val.clone();
+                    v2.sort();
+                    assert_eq!(v1, v2);
+                }
+            };
+        };
+    }
+
+    mod dependencies {
+        use super::*;
+
+        const CONFIG_EXAMPLE: &str = r#"
+            a:
+                shell: echo a
+
+            b:
+                shell: echo b
+                depends_on: 
+                    - a
+
+            c:
+                shell: echo c
+                depends_on:
+                    - b
+
+            d:
+                shell: echo c
+                depends_on:
+                    - a
+                    - b
+                    - c
+                    - y
+                    - z
+
+            y:
+                shell: echo y
+
+            z:
+                shell: echo z
+                depends_on:
+                    - y
+
+            not_child_dependency:
+                shell: echo hello world
+        "#;
+
+        #[test]
+        fn gets_all_dependencies() {
+            let config: Config = CONFIG_EXAMPLE.parse().unwrap();
+            let jobs = &["c".to_string(), "z".to_string()];
+
+            let jobs = config.get_all_dependencies(jobs);
+            let expected_jobs = vec!["a", "b", "y"];
+
+            assert_array_not_strict!(jobs, expected_jobs);
+        }
+
+        #[test]
+        fn gets_dependencies_from_config_file() {
+            let config: Config = CONFIG_EXAMPLE.parse().unwrap();
+
+            let jobs = config.get_dependencies("c");
+            let expected_jobs = vec!["b"];
+
+            assert_array_not_strict!(jobs, expected_jobs);
+        }
+
+        #[test]
+        fn simplifies_dependencies() {
+            let mut config: Config = CONFIG_EXAMPLE.parse().unwrap();
+            config.simplify_dependencies();
+
+            let job_d = config.ops.get("d").unwrap();
+
+            let dependencies_d = job_d.depends_on.resolve();
+            let expected_dependencies = vec!["c", "z"];
+
+            assert_array_not_strict!(dependencies_d, expected_dependencies);
+        }
+    }
 
     mod job_filtering {
         use super::*;
@@ -229,11 +372,10 @@ mod tests {
 
             config.filter_jobs(run).unwrap();
 
-            let mut jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
-            let mut expected_jobs = vec!["test", "test_dependency"];
+            let jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
+            let expected_jobs = vec!["test", "test_dependency"];
 
-            // sorting arrays because the order of the jobs after filtering does not matter
-            assert_eq!(jobs.sort(), expected_jobs.sort());
+            assert_array_not_strict!(jobs, expected_jobs);
         }
 
         #[test]
@@ -245,7 +387,7 @@ mod tests {
                 "",
                 "Valid jobs are:",
                 "  - not_test_dependency",
-                "  - test",
+                "  - test (test_dependency)",
                 "  - test_dependency",
             ]
             .join("\n");
@@ -267,11 +409,10 @@ mod tests {
 
             config.filter_jobs(run).unwrap();
 
-            let mut jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
-            let mut expected_jobs = vec!["test", "test_dependency", "not_test_dependency"];
+            let jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
+            let expected_jobs = vec!["test", "test_dependency", "not_test_dependency"];
 
-            // sorting arrays because the order of the jobs after filtering does not matter
-            assert_eq!(jobs.sort(), expected_jobs.sort());
+            assert_array_not_strict!(jobs, expected_jobs);
         }
     }
 }

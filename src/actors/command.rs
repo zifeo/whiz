@@ -229,13 +229,13 @@ impl CommandActor {
     }
 
     fn send_reload(&self) {
-        for next in (&self.nexts).iter() {
+        for next in (self.nexts).iter() {
             next.do_send(Reload::Op(self.op_name.clone()));
         }
     }
 
     fn send_will_reload(&self) {
-        for next in (&self.nexts).iter() {
+        for next in (self.nexts).iter() {
             next.do_send(WillReload {
                 op_name: self.op_name.clone(),
             });
@@ -307,14 +307,14 @@ impl Actor for CommandActor {
             let mut on = GlobSetBuilder::new();
             for pattern in self.operator.watches.resolve() {
                 on.add(
-                    Glob::new(&dir.join(&pattern).absolutize().unwrap().to_string_lossy()).unwrap(),
+                    Glob::new(&dir.join(pattern).absolutize().unwrap().to_string_lossy()).unwrap(),
                 );
             }
 
             let mut off = GlobSetBuilder::new();
             for pattern in self.operator.ignores.resolve() {
                 off.add(
-                    Glob::new(&dir.join(&pattern).absolutize().unwrap().to_string_lossy()).unwrap(),
+                    Glob::new(&dir.join(pattern).absolutize().unwrap().to_string_lossy()).unwrap(),
                 );
             }
 

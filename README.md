@@ -20,14 +20,15 @@ whiz --arg arg1 --arg arg2
 
 ## Flags
 
-| Flags             | Description                  |
-| ----------------- | ---------------------------- |
-| -f, --file        | specify the config file      |
-| -h, --help        | print help information       |
-| -r, --run \<JOB\> | run specific jobs            |
-| -t, --timestamp   | enable timestamps in logging |
-| -v, --verbose     | enable verbose mode          |
-| -V, --version     | print whiz version           |
+| Flags               | Description                  |
+| ------------------- | ---------------------------- |
+| -f, --file \<FILE\> | specify the config file      |
+| -h, --help          | print help information       |
+| --list-jobs         | list all the available jobs  |
+| -r, --run \<JOB\>   | run specific jobs            |
+| -t, --timestamp     | enable timestamps in logging |
+| -v, --verbose       | enable verbose mode          |
+| -V, --version       | print whiz version           |
 
 ## Key bindings
 

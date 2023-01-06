@@ -244,14 +244,15 @@ impl CommandActor {
 
     fn reload(&mut self) -> Result<()> {
         let args = &self.operator.shell;
+        let cwd = match self.operator.workdir.clone() {
+            Some(path) => self.base_dir.join(path),
+            None => self.base_dir.clone(),
+        };
+
+        self.log_debug(format!("EXEC: {} at {:?}", args, cwd));
+
         let mut p = Exec::cmd("bash")
-            .cwd(
-                self.operator
-                    .workdir
-                    .clone()
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| env::current_dir().unwrap()),
-            )
+            .cwd(cwd)
             .args(&["-c", args])
             .env_extend(&self.envs)
             .stdout(Redirection::Pipe)

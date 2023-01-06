@@ -5,7 +5,6 @@ use ignore::gitignore::Gitignore;
 use ignore::Match;
 use notify::event::ModifyKind;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::env;
 use std::path::{Path, PathBuf};
 
 use super::command::{CommandActor, Reload};
@@ -13,20 +12,16 @@ use super::command::{CommandActor, Reload};
 pub struct WatcherActor {
     watcher: Option<RecommendedWatcher>,
     globs: Vec<WatchGlob>,
+    base_dir: PathBuf,
 }
 
 impl WatcherActor {
-    pub fn new() -> Self {
+    pub fn new(base_dir: PathBuf) -> Self {
         Self {
             watcher: None,
             globs: Vec::default(),
+            base_dir,
         }
-    }
-}
-
-impl Default for WatcherActor {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -67,10 +62,7 @@ impl Actor for WatcherActor {
         .unwrap();
 
         watcher
-            .watch(
-                env::current_dir().unwrap().as_path(),
-                RecursiveMode::Recursive,
-            )
+            .watch(&self.base_dir, RecursiveMode::Recursive)
             .unwrap();
 
         self.watcher = Some(watcher);

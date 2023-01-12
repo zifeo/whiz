@@ -2,7 +2,6 @@ use actix::prelude::*;
 
 use globset::GlobSet;
 use ignore::gitignore::Gitignore;
-use ignore::Match;
 use notify::event::ModifyKind;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
@@ -38,12 +37,7 @@ impl Actor for WatcherActor {
             let paths = event
                 .paths
                 .iter()
-                .filter(|path| {
-                    !matches!(
-                        gi.matched_path_or_any_parents(path, false),
-                        Match::Ignore(_)
-                    )
-                })
+                .filter(|path| !gi.matched_path_or_any_parents(path, false).is_ignore())
                 .map(|path| path.to_path_buf())
                 .collect::<Vec<_>>();
 

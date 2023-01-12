@@ -30,14 +30,18 @@ impl Actor for WatcherActor {
     fn started(&mut self, ctx: &mut Context<Self>) {
         let addr = ctx.address();
 
-        let gi = Gitignore::new(Path::new(".gitignore")).0;
+        let git_ignore = Gitignore::new(Path::new(".gitignore")).0;
         let mut watcher = recommended_watcher(move |res: Result<Event, notify::Error>| {
             let event = res.unwrap();
 
             let paths = event
                 .paths
                 .iter()
-                .filter(|path| !gi.matched_path_or_any_parents(path, false).is_ignore())
+                .filter(|path| {
+                    !git_ignore
+                        .matched_path_or_any_parents(path, false)
+                        .is_ignore()
+                })
                 .map(|path| path.to_path_buf())
                 .collect::<Vec<_>>();
 

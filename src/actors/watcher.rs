@@ -1,7 +1,7 @@
 use actix::prelude::*;
 
 use globset::GlobSet;
-use ignore::gitignore::Gitignore;
+use ignore::gitignore::GitignoreBuilder;
 use notify::event::ModifyKind;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
@@ -30,28 +30,29 @@ impl Actor for WatcherActor {
     fn started(&mut self, ctx: &mut Context<Self>) {
         let addr = ctx.address();
 
-        let git_ignore = Gitignore::new(self.base_dir.join(".gitignore")).0;
-        let mut watcher = recommended_watcher(move |res: Result<Event, notify::Error>| {
-            let event = res.unwrap();
+        let mut git_ignore_builder = GitignoreBuilder::new(&self.base_dir);
+        // add globs from `<project-root>/.gitignore`
+        git_ignore_builder.add(self.base_dir.join(".gitignore"));
+        let git_ignore = git_ignore_builder.build();
 
-            let paths = event
-                .paths
-                .iter()
-                .filter(|path| {
+        let mut watcher = recommended_watcher(move |res: Result<Event, notify::Error>| {
+            let mut event = res.unwrap();
+
+            if let Ok(git_ignore) = &git_ignore {
+                event.paths.retain(|path| {
                     !git_ignore
                         .matched_path_or_any_parents(path, false)
                         .is_ignore()
                 })
-                .map(|path| path.to_path_buf())
-                .collect::<Vec<_>>();
+            };
 
-            if !paths.is_empty() {
+            if !event.paths.is_empty() {
                 match event.kind {
                     EventKind::Create(_)
                     | EventKind::Remove(_)
                     | EventKind::Modify(ModifyKind::Data(_))
                     | EventKind::Modify(ModifyKind::Name(_)) => {
-                        addr.do_send(WatchEvent(event, paths));
+                        addr.do_send(WatchEvent(event));
                     }
                     _ => {}
                 }
@@ -85,15 +86,16 @@ impl Handler<WatchGlob> for WatcherActor {
 
 #[derive(Message)]
 #[rtype(result = "()")]
-struct WatchEvent(Event, Vec<PathBuf>);
+struct WatchEvent(Event);
 
 impl Handler<WatchEvent> for WatcherActor {
     type Result = ();
 
     fn handle(&mut self, msg: WatchEvent, _: &mut Context<Self>) -> Self::Result {
-        let WatchEvent(_, paths) = msg;
+        let WatchEvent(event) = msg;
         for glob in &self.globs {
-            let paths = paths
+            let paths = event
+                .paths
                 .iter()
                 .filter(|path| glob.on.is_match(path) && !glob.off.is_match(path))
                 .collect::<Vec<_>>();

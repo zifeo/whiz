@@ -33,6 +33,8 @@ impl Actor for WatcherActor {
         let mut git_ignore_builder = GitignoreBuilder::new(&self.base_dir);
         // add globs from `<project-root>/.gitignore`
         git_ignore_builder.add(self.base_dir.join(".gitignore"));
+        // ignore `<project-root>/.git` folder
+        git_ignore_builder.add_line(None, ".git/").unwrap();
         let git_ignore = git_ignore_builder.build();
 
         let mut watcher = recommended_watcher(move |res: Result<Event, notify::Error>| {

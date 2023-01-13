@@ -4,7 +4,7 @@ use globset::GlobSet;
 use ignore::gitignore::Gitignore;
 use notify::event::ModifyKind;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::command::{CommandActor, Reload};
 
@@ -30,7 +30,7 @@ impl Actor for WatcherActor {
     fn started(&mut self, ctx: &mut Context<Self>) {
         let addr = ctx.address();
 
-        let git_ignore = Gitignore::new(Path::new(".gitignore")).0;
+        let git_ignore = Gitignore::new(self.base_dir.join(".gitignore")).0;
         let mut watcher = recommended_watcher(move |res: Result<Event, notify::Error>| {
             let event = res.unwrap();
 

@@ -201,8 +201,11 @@ impl CommandActor {
     }
 
     fn log_info(&self, log: String) {
+        let job_name = self.op_name.clone();
+        let log_files = self.operator.log.resolve();
+
         self.console
-            .do_send(Output::now(self.op_name.clone(), log, true));
+            .do_send(Output::now(job_name, log, log_files, true));
     }
 
     fn log_debug(&self, log: String) {
@@ -282,12 +285,18 @@ impl CommandActor {
 
         let console = self.console.clone();
         let op_name = self.op_name.clone();
+        let log_files = self.operator.log.resolve();
         let self_addr = self.self_addr.clone();
         let started_at = Local::now();
 
         let fut = async move {
             for line in reader.lines() {
-                console.do_send(Output::now(op_name.clone(), line.unwrap(), false));
+                console.do_send(Output::now(
+                    op_name.clone(),
+                    line.unwrap(),
+                    log_files.clone(),
+                    false,
+                ));
             }
             if let Some(addr) = self_addr {
                 addr.do_send(StdoutTerminated { started_at });

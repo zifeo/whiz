@@ -48,6 +48,7 @@ watch_parent:
     watch:
         - "*"
         - "../*"
+    log: changed_files.txt
 
 env_test:
     workdir: src
@@ -56,3 +57,11 @@ env_test:
         hello: "bonjour"
     env_file:
         - ../.env.example
+
+watch_src:
+    workdir: src
+    command: ls
+    watch: "*"
+    log: 
+      - changed_files.txt
+      - changed_src_files.txt

@@ -67,6 +67,7 @@ fn hello() {
             .send(Output::now(
                 "test".to_string(),
                 "message".to_string(),
+                Vec::new(),
                 false,
             ))
             .await?;

@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    path::Path,
     str::FromStr,
 };
 
@@ -52,6 +53,10 @@ pub struct Task {
 
     #[serde(default)]
     pub depends_on: Lift<String>,
+
+    /// Array of file paths to save the output of a job.
+    #[serde(default)]
+    pub log: Lift<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -75,13 +80,14 @@ impl FromStr for Config {
 }
 
 impl Config {
-    pub fn from_file(file: &File) -> Result<Config> {
+    pub fn from_file(file: &File, project_root_path: &Path) -> Result<Config> {
         let mut config: Config = serde_yaml::from_reader(file)?;
 
         // make sure config file is a `Directed Acyclic Graph`
         config.build_dag()?;
 
         config.simplify_dependencies();
+        config.parse_log_files(project_root_path);
         Ok(config)
     }
 
@@ -221,6 +227,34 @@ impl Config {
     /// Returns the list of all the jobs defined in the config file.
     pub fn get_jobs(&self) -> Vec<&String> {
         self.ops.iter().map(|(job_name, _)| job_name).collect()
+    }
+
+    /// Formats each path of the log files of each job to
+    /// `<project-root-path>/logs/<log-file>`.
+    ///
+    /// And adds the logs files to the category of files to ignore for changes.
+    fn parse_log_files(&mut self, project_root_path: &Path) {
+        let mut all_log_files = Vec::new();
+
+        for (_, job_operator) in self.ops.iter_mut() {
+            let mut log_files = job_operator.log.resolve();
+            for log_file in log_files.iter_mut() {
+                *log_file = project_root_path
+                    .join("logs")
+                    .join(&log_file)
+                    .to_string_lossy()
+                    .to_string();
+            }
+            job_operator.log = Lift::More(log_files.clone());
+            all_log_files.extend(log_files.into_iter());
+        }
+
+        for (_, job_operator) in self.ops.iter_mut() {
+            let mut ignores = job_operator.ignore.resolve();
+            // ignore all log files to avoid infinite loops on the watcher
+            ignores.extend(all_log_files.clone().into_iter());
+            job_operator.ignore = Lift::More(ignores);
+        }
     }
 
     /// Remove dependencies that are child of another dependency for

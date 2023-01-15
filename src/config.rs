@@ -34,18 +34,21 @@ impl<T> Default for Lift<T> {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct Operator {
+pub struct Task {
     pub workdir: Option<String>,
     pub shell: String,
 
     #[serde(default)]
-    pub watches: Lift<String>,
+    pub watch: Lift<String>,
 
     #[serde(default)]
-    pub ignores: Lift<String>,
+    pub ignore: Lift<String>,
 
     #[serde(default)]
-    pub envs: Option<HashMap<String, String>>,
+    pub env: Option<HashMap<String, String>>,
+
+    #[serde(default)]
+    pub env_file: Lift<String>,
 
     #[serde(default)]
     pub depends_on: Lift<String>,
@@ -54,13 +57,10 @@ pub struct Operator {
 #[derive(Deserialize, Debug)]
 pub struct Config {
     #[serde(default)]
-    pub views: HashMap<String, Vec<String>>,
-
-    #[serde(default)]
-    pub envs: HashMap<String, String>,
+    pub env: HashMap<String, String>,
 
     #[serde(flatten)]
-    pub ops: IndexMap<String, Operator>,
+    pub ops: IndexMap<String, Task>,
 }
 
 pub type Dag = IndexMap<String, Vec<String>>;
@@ -119,15 +119,6 @@ impl Config {
     }
 
     pub fn build_dag(&self) -> Result<Dag> {
-        // views
-        for (view_name, op_names) in self.views.iter() {
-            for op_name in op_names.iter() {
-                if !self.ops.contains_key(op_name) {
-                    return Err(anyhow!("{} in view {}", op_name, view_name));
-                }
-            }
-        }
-
         // dependencies
         for (op_name, ops) in (&self.ops).into_iter() {
             for dep_op_name in ops.depends_on.resolve().into_iter() {

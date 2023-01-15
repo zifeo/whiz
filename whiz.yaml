@@ -1,45 +1,41 @@
-envs:
+env:
     B: second
 
 speedy:
     shell: 'for i in {10..50}; do for j in {10..30}; do echo -n "$i-$j "; done; echo; done'
-    watches:
+    watch:
         - "src/**/*.rs"
 
 once:
     workdir: .
-    watches: "*"
-    envs:
+    watch: "*"
+    env:
         A: world
     shell: "echo hello $A"
 
 once_b:
     shell: "sleep 2 && echo $B"
-
     depends_on: once
 
 once_c:
     shell: "echo C"
-
     depends_on:
         - once
         - once_b
 
 sleep_count:
     workdir: .
-    watches: .
+    watch: .
     shell: "for ((i=0; i<10; i=i+1)); do echo $TEST $i; sleep 1; done"
-    envs:
+    env:
         TEST: "hello from $HOME "
-
     depends_on:
         - once
 
 dodo:
     workdir: .
-    watches: target
+    watch: target
     shell: "sleep 30"
-
     depends_on:
         - once
 
@@ -49,6 +45,13 @@ color:
 watch_parent:
     workdir: src
     shell: ls
-    watches:
+    watch:
         - "*"
         - "../*"
+
+env_test:
+    shell: "echo $hello $world"
+    env:
+        hello: "bonjour"
+    env_file:
+        - .env.example

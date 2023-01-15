@@ -6,11 +6,12 @@ use chrono::{DateTime, Local};
 use regex::Regex;
 use subprocess::{Exec, ExitStatus, Popen, Redirection};
 
+use dotenv_parser::parse_dotenv;
 use globset::{Glob, GlobSetBuilder};
 use path_absolutize::*;
 use path_clean::{self, PathClean};
 use std::collections::BTreeMap;
-
+use std::fs;
 use std::{collections::HashMap, env, time::Duration};
 use std::{
     io::{BufRead, BufReader},
@@ -18,7 +19,7 @@ use std::{
 };
 
 use crate::config::Config;
-use crate::config::Operator;
+use crate::config::Task;
 
 use super::console::{Output, Register};
 use super::watcher::WatchGlob;
@@ -98,7 +99,7 @@ impl Child {
 
 pub struct CommandActor {
     op_name: String,
-    operator: Operator,
+    operator: Task,
     console: Addr<ConsoleAct>,
     watcher: Addr<WatcherAct>,
     arbiter: Arbiter,
@@ -109,10 +110,10 @@ pub struct CommandActor {
     pending_upstream: BTreeMap<String, usize>,
     verbose: bool,
     started_at: DateTime<Local>,
-    envs: Vec<(String, String)>,
+    env: Vec<(String, String)>,
 }
 
-pub fn resolve_envs(
+pub fn resolve_env(
     kvs: &HashMap<String, String>,
     vars: &HashMap<String, String>,
 ) -> Result<HashMap<String, String>> {
@@ -153,7 +154,7 @@ impl CommandActor {
                     .collect(),
                 base_dir.clone(),
                 verbose,
-                &config.envs,
+                &config.env,
             )
             .start();
 
@@ -173,17 +174,27 @@ impl CommandActor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         op_name: String,
-        operator: Operator,
+        operator: Task,
         console: Addr<ConsoleAct>,
         watcher: Addr<WatcherAct>,
         nexts: Vec<Addr<CommandActor>>,
         base_dir: PathBuf,
         verbose: bool,
-        common_envs: &HashMap<String, String>,
+        shared_env: &HashMap<String, String>,
     ) -> Self {
-        let mut envs = HashMap::from_iter(env::vars());
-        envs.extend(resolve_envs(common_envs, &envs).unwrap());
-        envs.extend(resolve_envs(&operator.envs.clone().unwrap_or_default(), &envs).unwrap());
+        let mut env = HashMap::from_iter(env::vars());
+        env.extend(resolve_env(shared_env, &env).unwrap());
+
+        for env_file in operator.env_file.resolve() {
+            let file = fs::read_to_string(env_file.clone())
+                .unwrap_or_else(|_| panic!("cannot find env_file {}", env_file.clone()));
+            let parsed = parse_dotenv(&file)
+                .unwrap_or_else(|_| panic!("cannot parse env_file {}", env_file));
+
+            env.extend(resolve_env(&parsed.into_iter().collect(), &env).unwrap());
+        }
+
+        env.extend(resolve_env(&operator.env.clone().unwrap_or_default(), &env).unwrap());
 
         Self {
             op_name,
@@ -198,7 +209,7 @@ impl CommandActor {
             pending_upstream: BTreeMap::default(),
             verbose,
             started_at: Local::now(),
-            envs: envs.into_iter().collect(),
+            env: env.into_iter().collect(),
         }
     }
 
@@ -254,7 +265,7 @@ impl CommandActor {
         let mut p = Exec::cmd("bash")
             .cwd(cwd)
             .args(&["-c", args])
-            .env_extend(&self.envs)
+            .env_extend(&self.env)
             .stdout(Redirection::Pipe)
             .stderr(Redirection::Merge)
             .popen()
@@ -302,18 +313,18 @@ impl Actor for CommandActor {
             .join(self.operator.workdir.as_ref().unwrap_or(&"".to_string()))
             .clean();
 
-        let watches = self.operator.watches.resolve();
+        let watches = self.operator.watch.resolve();
 
         if !watches.is_empty() {
             let mut on = GlobSetBuilder::new();
-            for pattern in self.operator.watches.resolve() {
+            for pattern in self.operator.watch.resolve() {
                 on.add(
                     Glob::new(&dir.join(pattern).absolutize().unwrap().to_string_lossy()).unwrap(),
                 );
             }
 
             let mut off = GlobSetBuilder::new();
-            for pattern in self.operator.ignores.resolve() {
+            for pattern in self.operator.ignore.resolve() {
                 off.add(
                     Glob::new(&dir.join(pattern).absolutize().unwrap().to_string_lossy()).unwrap(),
                 );

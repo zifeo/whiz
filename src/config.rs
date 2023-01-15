@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    fs,
     path::Path,
     str::FromStr,
 };
@@ -244,6 +245,10 @@ impl Config {
                     .join(&log_file)
                     .to_string_lossy()
                     .to_string();
+
+                // make sure that the parent folder exists
+                let log_folder = Path::new(log_file).parent().unwrap();
+                fs::create_dir_all(log_folder).unwrap();
             }
             job_operator.log = Lift::More(log_files.clone());
             all_log_files.extend(log_files.into_iter());

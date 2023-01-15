@@ -2,7 +2,6 @@ use actix::prelude::*;
 use ansi_to_tui::IntoText;
 use chrono::prelude::*;
 use std::io::Write;
-use std::path::Path;
 use std::{cmp::min, collections::HashMap, io};
 use std::{fs, str};
 use tui::backend::Backend;
@@ -363,11 +362,6 @@ fn format_message(message: &str, timestamp: &DateTime<Local>) -> String {
 /// Saves the output of a job into the given array of log files.
 fn log_output(content: &str, log_files: &Vec<String>, timestamp: &DateTime<Local>) {
     for log_file in log_files {
-        // make sure parent folder exists before writing to the log file
-        if let Some(log_folder) = Path::new(log_file).parent() {
-            fs::create_dir_all(log_folder).unwrap();
-        }
-
         let mut file = fs::OpenOptions::new()
             .create(true)
             .append(true)

@@ -12,6 +12,7 @@ use path_absolutize::*;
 use path_clean::{self, PathClean};
 use std::collections::BTreeMap;
 use std::fs;
+use std::path::Path;
 use std::{collections::HashMap, env, time::Duration};
 use std::{
     io::{BufRead, BufReader},
@@ -239,25 +240,31 @@ impl CommandActor {
         }
     }
 
-    fn reload(&mut self) -> Result<()> {
-        let args = &self.operator.command;
-        let cwd = match self.operator.workdir.clone() {
-            Some(path) => self.base_dir.join(path),
-            None => self.base_dir.clone(),
-        };
-
+    fn load_env(&self, cwd: &Path) -> Vec<(String, String)> {
         let mut env = HashMap::from_iter(env::vars());
         env.extend(resolve_env(&self.shared_env, &env).unwrap());
         for env_file in self.operator.env_file.resolve() {
             let path = cwd.join(env_file.clone());
             let file = fs::read_to_string(path.clone())
                 .unwrap_or_else(|_| panic!("cannot find env_file {:?}", path.clone(),));
-            let parsed =
-                parse_dotenv(&file).unwrap_or_else(|_| panic!("cannot parse env_file {:?}", path));
+            let values = parse_dotenv(&file)
+                .unwrap_or_else(|_| panic!("cannot parse env_file {:?}", path))
+                .into_iter()
+                .map(|(k, v)| (k, v.replace("\\n", "\n")));
 
-            env.extend(resolve_env(&parsed.into_iter().collect(), &env).unwrap());
+            env.extend(resolve_env(&values.collect(), &env).unwrap());
         }
         env.extend(resolve_env(&self.operator.env.clone(), &env).unwrap());
+        env.into_iter().collect()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        let args = &self.operator.command;
+        let cwd = match self.operator.workdir.clone() {
+            Some(path) => self.base_dir.join(path),
+            None => self.base_dir.clone(),
+        };
+        let env = self.load_env(&cwd);
 
         self.log_debug(format!("EXEC: {} at {:?}", args, cwd));
 

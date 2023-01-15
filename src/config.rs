@@ -272,20 +272,20 @@ mod tests {
 
         const CONFIG_EXAMPLE: &str = r#"
             a:
-                shell: echo a
+                command: echo a
 
             b:
-                shell: echo b
+                command: echo b
                 depends_on: 
                     - a
 
             c:
-                shell: echo c
+                command: echo c
                 depends_on:
                     - b
 
             d:
-                shell: echo c
+                command: echo c
                 depends_on:
                     - a
                     - b
@@ -294,15 +294,15 @@ mod tests {
                     - z
 
             y:
-                shell: echo y
+                command: echo y
 
             z:
-                shell: echo z
+                command: echo z
                 depends_on:
                     - y
 
             not_child_dependency:
-                shell: echo hello world
+                command: echo hello world
         "#;
 
         #[test]
@@ -345,13 +345,13 @@ mod tests {
 
         const CONFIG_EXAMPLE: &str = r#"
             not_test_dependency:
-                shell: echo fails
+                command: echo fails
 
             test_dependency:
-                shell: echo hello
+                command: echo hello
 
             test:
-                shell: echo world
+                command: echo world
                 depends_on:
                     - test_dependency
         "#;

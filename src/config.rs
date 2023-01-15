@@ -36,7 +36,7 @@ impl<T> Default for Lift<T> {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Task {
     pub workdir: Option<String>,
-    pub shell: String,
+    pub command: String,
 
     #[serde(default)]
     pub watch: Lift<String>,
@@ -45,7 +45,7 @@ pub struct Task {
     pub ignore: Lift<String>,
 
     #[serde(default)]
-    pub env: Option<HashMap<String, String>>,
+    pub env: HashMap<String, String>,
 
     #[serde(default)]
     pub env_file: Lift<String>,

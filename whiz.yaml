@@ -2,7 +2,7 @@ env:
     B: second
 
 speedy:
-    shell: 'for i in {10..50}; do for j in {10..30}; do echo -n "$i-$j "; done; echo; done'
+    command: 'for i in {10..50}; do for j in {10..30}; do echo -n "$i-$j "; done; echo; done'
     watch:
         - "src/**/*.rs"
 
@@ -11,14 +11,14 @@ once:
     watch: "*"
     env:
         A: world
-    shell: "echo hello $A"
+    command: "echo hello $A"
 
 once_b:
-    shell: "sleep 2 && echo $B"
+    command: "sleep 2 && echo $B"
     depends_on: once
 
 once_c:
-    shell: "echo C"
+    command: "echo C"
     depends_on:
         - once
         - once_b
@@ -26,7 +26,7 @@ once_c:
 sleep_count:
     workdir: .
     watch: .
-    shell: "for ((i=0; i<10; i=i+1)); do echo $TEST $i; sleep 1; done"
+    command: "for ((i=0; i<10; i=i+1)); do echo $TEST $i; sleep 1; done"
     env:
         TEST: "hello from $HOME "
     depends_on:
@@ -35,23 +35,24 @@ sleep_count:
 dodo:
     workdir: .
     watch: target
-    shell: "sleep 30"
+    command: "sleep 30"
     depends_on:
         - once
 
 color:
-    shell: python3 -c 'print(u"\u001b[31mHelloWorld\u001b[0m")'
+    command: python3 -c 'print(u"\u001b[31mHelloWorld\u001b[0m")'
 
 watch_parent:
     workdir: src
-    shell: ls
+    command: ls
     watch:
         - "*"
         - "../*"
 
 env_test:
-    shell: "echo $hello $world"
+    workdir: src
+    command: "echo $hello $world"
     env:
         hello: "bonjour"
     env_file:
-        - .env.example
+        - ../.env.example

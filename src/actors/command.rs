@@ -240,7 +240,7 @@ impl CommandActor {
     }
 
     fn reload(&mut self) -> Result<()> {
-        let args = &self.operator.shell;
+        let args = &self.operator.command;
         let cwd = match self.operator.workdir.clone() {
             Some(path) => self.base_dir.join(path),
             None => self.base_dir.clone(),
@@ -249,14 +249,15 @@ impl CommandActor {
         let mut env = HashMap::from_iter(env::vars());
         env.extend(resolve_env(&self.shared_env, &env).unwrap());
         for env_file in self.operator.env_file.resolve() {
-            let file = fs::read_to_string(env_file.clone())
-                .unwrap_or_else(|_| panic!("cannot find env_file {}", env_file.clone()));
-            let parsed = parse_dotenv(&file)
-                .unwrap_or_else(|_| panic!("cannot parse env_file {}", env_file));
+            let path = cwd.join(env_file.clone());
+            let file = fs::read_to_string(path.clone())
+                .unwrap_or_else(|_| panic!("cannot find env_file {:?}", path.clone(),));
+            let parsed =
+                parse_dotenv(&file).unwrap_or_else(|_| panic!("cannot parse env_file {:?}", path));
 
             env.extend(resolve_env(&parsed.into_iter().collect(), &env).unwrap());
         }
-        env.extend(resolve_env(&self.operator.env.clone().unwrap_or_default(), &env).unwrap());
+        env.extend(resolve_env(&self.operator.env.clone(), &env).unwrap());
 
         self.log_debug(format!("EXEC: {} at {:?}", args, cwd));
 

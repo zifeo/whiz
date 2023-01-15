@@ -110,7 +110,7 @@ pub struct CommandActor {
     pending_upstream: BTreeMap<String, usize>,
     verbose: bool,
     started_at: DateTime<Local>,
-    env: Vec<(String, String)>,
+    shared_env: HashMap<String, String>,
 }
 
 pub fn resolve_env(
@@ -154,7 +154,7 @@ impl CommandActor {
                     .collect(),
                 base_dir.clone(),
                 verbose,
-                &config.env,
+                config.env.clone(),
             )
             .start();
 
@@ -180,22 +180,8 @@ impl CommandActor {
         nexts: Vec<Addr<CommandActor>>,
         base_dir: PathBuf,
         verbose: bool,
-        shared_env: &HashMap<String, String>,
+        shared_env: HashMap<String, String>,
     ) -> Self {
-        let mut env = HashMap::from_iter(env::vars());
-        env.extend(resolve_env(shared_env, &env).unwrap());
-
-        for env_file in operator.env_file.resolve() {
-            let file = fs::read_to_string(env_file.clone())
-                .unwrap_or_else(|_| panic!("cannot find env_file {}", env_file.clone()));
-            let parsed = parse_dotenv(&file)
-                .unwrap_or_else(|_| panic!("cannot parse env_file {}", env_file));
-
-            env.extend(resolve_env(&parsed.into_iter().collect(), &env).unwrap());
-        }
-
-        env.extend(resolve_env(&operator.env.clone().unwrap_or_default(), &env).unwrap());
-
         Self {
             op_name,
             operator,
@@ -209,7 +195,7 @@ impl CommandActor {
             pending_upstream: BTreeMap::default(),
             verbose,
             started_at: Local::now(),
-            env: env.into_iter().collect(),
+            shared_env,
         }
     }
 
@@ -260,12 +246,24 @@ impl CommandActor {
             None => self.base_dir.clone(),
         };
 
+        let mut env = HashMap::from_iter(env::vars());
+        env.extend(resolve_env(&self.shared_env, &env).unwrap());
+        for env_file in self.operator.env_file.resolve() {
+            let file = fs::read_to_string(env_file.clone())
+                .unwrap_or_else(|_| panic!("cannot find env_file {}", env_file.clone()));
+            let parsed = parse_dotenv(&file)
+                .unwrap_or_else(|_| panic!("cannot parse env_file {}", env_file));
+
+            env.extend(resolve_env(&parsed.into_iter().collect(), &env).unwrap());
+        }
+        env.extend(resolve_env(&self.operator.env.clone().unwrap_or_default(), &env).unwrap());
+
         self.log_debug(format!("EXEC: {} at {:?}", args, cwd));
 
         let mut p = Exec::cmd("bash")
             .cwd(cwd)
             .args(&["-c", args])
-            .env_extend(&self.env)
+            .env_extend(&env.into_iter().collect::<Vec<(String, String)>>())
             .stdout(Redirection::Pipe)
             .stderr(Redirection::Merge)
             .popen()

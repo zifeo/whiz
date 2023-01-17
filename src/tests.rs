@@ -46,7 +46,7 @@ fn hello() {
     within_system(async move {
         let config: Config = r#"
             test:
-                shell: ls
+                command: ls
             "#
         .parse()?;
 

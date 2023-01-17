@@ -34,18 +34,21 @@ impl<T> Default for Lift<T> {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct Operator {
+pub struct Task {
     pub workdir: Option<String>,
-    pub shell: String,
+    pub command: String,
 
     #[serde(default)]
-    pub watches: Lift<String>,
+    pub watch: Lift<String>,
 
     #[serde(default)]
-    pub ignores: Lift<String>,
+    pub ignore: Lift<String>,
 
     #[serde(default)]
-    pub envs: Option<HashMap<String, String>>,
+    pub env: HashMap<String, String>,
+
+    #[serde(default)]
+    pub env_file: Lift<String>,
 
     #[serde(default)]
     pub depends_on: Lift<String>,
@@ -54,13 +57,10 @@ pub struct Operator {
 #[derive(Deserialize, Debug)]
 pub struct Config {
     #[serde(default)]
-    pub views: HashMap<String, Vec<String>>,
-
-    #[serde(default)]
-    pub envs: HashMap<String, String>,
+    pub env: HashMap<String, String>,
 
     #[serde(flatten)]
-    pub ops: IndexMap<String, Operator>,
+    pub ops: IndexMap<String, Task>,
 }
 
 pub type Dag = IndexMap<String, Vec<String>>;
@@ -119,15 +119,6 @@ impl Config {
     }
 
     pub fn build_dag(&self) -> Result<Dag> {
-        // views
-        for (view_name, op_names) in self.views.iter() {
-            for op_name in op_names.iter() {
-                if !self.ops.contains_key(op_name) {
-                    return Err(anyhow!("{} in view {}", op_name, view_name));
-                }
-            }
-        }
-
         // dependencies
         for (op_name, ops) in (&self.ops).into_iter() {
             for dep_op_name in ops.depends_on.resolve().into_iter() {
@@ -281,20 +272,20 @@ mod tests {
 
         const CONFIG_EXAMPLE: &str = r#"
             a:
-                shell: echo a
+                command: echo a
 
             b:
-                shell: echo b
+                command: echo b
                 depends_on: 
                     - a
 
             c:
-                shell: echo c
+                command: echo c
                 depends_on:
                     - b
 
             d:
-                shell: echo c
+                command: echo c
                 depends_on:
                     - a
                     - b
@@ -303,15 +294,15 @@ mod tests {
                     - z
 
             y:
-                shell: echo y
+                command: echo y
 
             z:
-                shell: echo z
+                command: echo z
                 depends_on:
                     - y
 
             not_child_dependency:
-                shell: echo hello world
+                command: echo hello world
         "#;
 
         #[test]
@@ -354,13 +345,13 @@ mod tests {
 
         const CONFIG_EXAMPLE: &str = r#"
             not_test_dependency:
-                shell: echo fails
+                command: echo fails
 
             test_dependency:
-                shell: echo hello
+                command: echo hello
 
             test:
-                shell: echo world
+                command: echo world
                 depends_on:
                     - test_dependency
         "#;

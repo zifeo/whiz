@@ -6,11 +6,13 @@ use chrono::{DateTime, Local};
 use regex::Regex;
 use subprocess::{Exec, ExitStatus, Popen, Redirection};
 
+use dotenv_parser::parse_dotenv;
 use globset::{Glob, GlobSetBuilder};
 use path_absolutize::*;
 use path_clean::{self, PathClean};
 use std::collections::BTreeMap;
-
+use std::fs;
+use std::path::Path;
 use std::{collections::HashMap, env, time::Duration};
 use std::{
     io::{BufRead, BufReader},
@@ -18,7 +20,7 @@ use std::{
 };
 
 use crate::config::Config;
-use crate::config::Operator;
+use crate::config::Task;
 
 use super::console::{Output, Register};
 use super::watcher::WatchGlob;
@@ -98,7 +100,7 @@ impl Child {
 
 pub struct CommandActor {
     op_name: String,
-    operator: Operator,
+    operator: Task,
     console: Addr<ConsoleAct>,
     watcher: Addr<WatcherAct>,
     arbiter: Arbiter,
@@ -109,10 +111,10 @@ pub struct CommandActor {
     pending_upstream: BTreeMap<String, usize>,
     verbose: bool,
     started_at: DateTime<Local>,
-    envs: Vec<(String, String)>,
+    shared_env: HashMap<String, String>,
 }
 
-pub fn resolve_envs(
+pub fn resolve_env(
     kvs: &HashMap<String, String>,
     vars: &HashMap<String, String>,
 ) -> Result<HashMap<String, String>> {
@@ -153,7 +155,7 @@ impl CommandActor {
                     .collect(),
                 base_dir.clone(),
                 verbose,
-                &config.envs,
+                config.env.clone(),
             )
             .start();
 
@@ -173,18 +175,14 @@ impl CommandActor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         op_name: String,
-        operator: Operator,
+        operator: Task,
         console: Addr<ConsoleAct>,
         watcher: Addr<WatcherAct>,
         nexts: Vec<Addr<CommandActor>>,
         base_dir: PathBuf,
         verbose: bool,
-        common_envs: &HashMap<String, String>,
+        shared_env: HashMap<String, String>,
     ) -> Self {
-        let mut envs = HashMap::from_iter(env::vars());
-        envs.extend(resolve_envs(common_envs, &envs).unwrap());
-        envs.extend(resolve_envs(&operator.envs.clone().unwrap_or_default(), &envs).unwrap());
-
         Self {
             op_name,
             operator,
@@ -198,7 +196,7 @@ impl CommandActor {
             pending_upstream: BTreeMap::default(),
             verbose,
             started_at: Local::now(),
-            envs: envs.into_iter().collect(),
+            shared_env,
         }
     }
 
@@ -242,19 +240,38 @@ impl CommandActor {
         }
     }
 
+    fn load_env(&self, cwd: &Path) -> Vec<(String, String)> {
+        let mut env = HashMap::from_iter(env::vars());
+        env.extend(resolve_env(&self.shared_env, &env).unwrap());
+        for env_file in self.operator.env_file.resolve() {
+            let path = cwd.join(env_file.clone());
+            let file = fs::read_to_string(path.clone())
+                .unwrap_or_else(|_| panic!("cannot find env_file {:?}", path.clone(),));
+            let values = parse_dotenv(&file)
+                .unwrap_or_else(|_| panic!("cannot parse env_file {:?}", path))
+                .into_iter()
+                .map(|(k, v)| (k, v.replace("\\n", "\n")));
+
+            env.extend(resolve_env(&values.collect(), &env).unwrap());
+        }
+        env.extend(resolve_env(&self.operator.env.clone(), &env).unwrap());
+        env.into_iter().collect()
+    }
+
     fn reload(&mut self) -> Result<()> {
-        let args = &self.operator.shell;
+        let args = &self.operator.command;
         let cwd = match self.operator.workdir.clone() {
             Some(path) => self.base_dir.join(path),
             None => self.base_dir.clone(),
         };
+        let env = self.load_env(&cwd);
 
         self.log_debug(format!("EXEC: {} at {:?}", args, cwd));
 
         let mut p = Exec::cmd("bash")
             .cwd(cwd)
             .args(&["-c", args])
-            .env_extend(&self.envs)
+            .env_extend(&env.into_iter().collect::<Vec<(String, String)>>())
             .stdout(Redirection::Pipe)
             .stderr(Redirection::Merge)
             .popen()
@@ -302,18 +319,18 @@ impl Actor for CommandActor {
             .join(self.operator.workdir.as_ref().unwrap_or(&"".to_string()))
             .clean();
 
-        let watches = self.operator.watches.resolve();
+        let watches = self.operator.watch.resolve();
 
         if !watches.is_empty() {
             let mut on = GlobSetBuilder::new();
-            for pattern in self.operator.watches.resolve() {
+            for pattern in self.operator.watch.resolve() {
                 on.add(
                     Glob::new(&dir.join(pattern).absolutize().unwrap().to_string_lossy()).unwrap(),
                 );
             }
 
             let mut off = GlobSetBuilder::new();
-            for pattern in self.operator.ignores.resolve() {
+            for pattern in self.operator.ignore.resolve() {
                 off.add(
                     Glob::new(&dir.join(pattern).absolutize().unwrap().to_string_lossy()).unwrap(),
                 );

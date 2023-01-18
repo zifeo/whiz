@@ -12,6 +12,7 @@ use path_absolutize::*;
 use path_clean::{self, PathClean};
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::{collections::HashMap, env, time::Duration};
 use std::{
@@ -23,7 +24,7 @@ use crate::config::Config;
 use crate::config::Task;
 
 use super::console::{Output, Register};
-use super::watcher::WatchGlob;
+use super::watcher::{IgnorePath, WatchGlob};
 
 #[cfg(not(test))]
 mod prelude {
@@ -129,6 +130,51 @@ pub fn resolve_env(
         })
         .collect();
     Ok(res)
+}
+
+/// Set of places to which the output of a task can be redirected.
+enum OutputRedirection {
+    /// Indicates that the output of a task should be sent
+    /// to a new virtual tab with the given name.
+    Tab(String),
+    /// Indicates that the output of a task should be saved
+    /// as a log file in the given path.
+    File(String),
+}
+
+impl OutputRedirection {
+    /// Creates a new [`OutputRedirection`] from the given redirection URI.
+    ///
+    /// Available URI schemes:
+    ///
+    /// - file (default)
+    /// - whiz
+    ///
+    /// Redirection URI examples:
+    ///
+    /// - whiz://virtual_views -> Tab
+    /// - file:///dev/null -> File
+    /// - ./logs/server.log -> File
+    pub fn from_str(redirection_uri: &str) -> Self {
+        let protocol_separator_pattern = Regex::new("://").unwrap();
+        let split: Vec<&str> = protocol_separator_pattern
+            .splitn(redirection_uri, 2)
+            .collect();
+
+        // redirection URIs without protocol separator are
+        // by default treated as file paths
+        if split.len() < 2 {
+            return OutputRedirection::File(redirection_uri.to_owned());
+        }
+
+        let protocol = split[0];
+        let path = split[1];
+
+        match protocol {
+            "whiz" => OutputRedirection::Tab(path.to_owned()),
+            _ => OutputRedirection::File(path.to_owned()),
+        }
+    }
 }
 
 impl CommandActor {
@@ -288,16 +334,80 @@ impl CommandActor {
         let log_files = self.operator.log.resolve();
         let self_addr = self.self_addr.clone();
         let started_at = Local::now();
+        let operator = self.operator.clone();
+        let base_dir = self.base_dir.clone();
+        let watcher = self.watcher.clone();
 
         let fut = async move {
-            for line in reader.lines() {
+            'output: for line in reader.lines() {
+                let mut line = line.unwrap();
+                let mut base_dir = base_dir.clone();
+
+                if let Some(workdir) = &operator.workdir {
+                    base_dir = base_dir.join(workdir);
+                }
+
+                for (regex, redirection) in &operator.pipe {
+                    let regex = Regex::new(regex).unwrap();
+
+                    if !regex.is_match(&line) {
+                        continue;
+                    }
+
+                    let redirection = OutputRedirection::from_str(redirection);
+
+                    match redirection {
+                        OutputRedirection::Tab(name) => {
+                            console.do_send(Output::now(
+                                name,
+                                line.clone(),
+                                log_files.clone(),
+                                false,
+                            ));
+                        }
+                        OutputRedirection::File(path) => {
+                            let path = regex.replace(&line, path);
+                            let mut path = Path::new(path.as_ref()).to_path_buf();
+
+                            // prepend base dir if the log file path is relative
+                            if !path.starts_with("/") {
+                                path = base_dir.join(path);
+                            }
+
+                            let log_folder = Path::new(&path).parent().unwrap();
+                            fs::create_dir_all(log_folder).unwrap();
+
+                            // file must be created and opened on each loop
+                            // as the path is dynamic, therefore there
+                            // is no a way to optimize it to create it
+                            // only once
+                            let mut file = fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&path)
+                                .unwrap();
+
+                            // exlude file path from watcher before writing to it
+                            // to avoid infinite loops
+                            watcher.do_send(IgnorePath(path));
+
+                            // append new line since strings from the buffer reader don't include it
+                            line.push('\n');
+                            file.write_all(line.clone().as_bytes()).unwrap();
+                        }
+                    }
+
+                    continue 'output;
+                }
+
                 console.do_send(Output::now(
                     op_name.clone(),
-                    line.unwrap(),
+                    line.clone(),
                     log_files.clone(),
                     false,
                 ));
             }
+
             if let Some(addr) = self_addr {
                 addr.do_send(StdoutTerminated { started_at });
             }
@@ -317,6 +427,19 @@ impl Actor for CommandActor {
     fn started(&mut self, ctx: &mut Context<Self>) {
         let addr = ctx.address();
         self.self_addr = Some(addr.clone());
+
+        for redirection in self.operator.pipe.values() {
+            let redirection = OutputRedirection::from_str(redirection);
+            match redirection {
+                OutputRedirection::Tab(name) => {
+                    self.console.do_send(Register {
+                        title: name,
+                        addr: addr.clone(),
+                    });
+                }
+                OutputRedirection::File(_path) => {}
+            }
+        }
 
         self.console.do_send(Register {
             title: self.op_name.clone(),

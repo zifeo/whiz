@@ -55,6 +55,28 @@ pub struct Task {
     #[serde(default)]
     pub depends_on: Lift<String>,
 
+    /// Map of output redirections with the format:
+    /// `regular expressiong` -> `pipe`
+    ///
+    /// Where the content matched by the regular expression
+    /// can be redirected to:
+    ///
+    /// - whiz: creating a new tab for the incoming messages.
+    /// Format: `whiz://{tab_name}`
+    ///
+    /// - /dev/null: silence the matched content.
+    /// Format: `/dev/null` or `file:///dev/null`
+    ///
+    /// - file: saving the matched content in a log file.
+    /// Format: `path` or `file:///{path}`
+    ///
+    /// # NOTE
+    ///
+    /// Any other output not matched by a regular expression goes to
+    /// `whiz://{task_name}` as default.
+    #[serde(default)]
+    pub pipe: HashMap<String, String>,
+
     /// Array of file paths to save the output of a job.
     #[serde(default)]
     pub log: Lift<String>,

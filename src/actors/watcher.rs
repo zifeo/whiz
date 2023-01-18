@@ -4,6 +4,7 @@ use globset::GlobSet;
 use ignore::gitignore::GitignoreBuilder;
 use notify::event::ModifyKind;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::command::{CommandActor, Reload};
@@ -12,6 +13,8 @@ pub struct WatcherActor {
     watcher: Option<RecommendedWatcher>,
     globs: Vec<WatchGlob>,
     base_dir: PathBuf,
+    // List of file paths to ignore on the watcher
+    ignore: HashSet<PathBuf>,
 }
 
 impl WatcherActor {
@@ -20,6 +23,7 @@ impl WatcherActor {
             watcher: None,
             globs: Vec::default(),
             base_dir,
+            ignore: HashSet::default(),
         }
     }
 }
@@ -99,7 +103,11 @@ impl Handler<WatchEvent> for WatcherActor {
             let paths = event
                 .paths
                 .iter()
-                .filter(|path| glob.on.is_match(path) && !glob.off.is_match(path))
+                .filter(|path| {
+                    !self.ignore.contains(path.as_path())
+                        && glob.on.is_match(path)
+                        && !glob.off.is_match(path)
+                })
                 .collect::<Vec<_>>();
 
             if !paths.is_empty() {
@@ -111,5 +119,18 @@ impl Handler<WatchEvent> for WatcherActor {
                 glob.command.do_send(Reload::Watch(trigger))
             }
         }
+    }
+}
+
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct IgnorePath(pub PathBuf);
+
+impl Handler<IgnorePath> for WatcherActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: IgnorePath, _: &mut Context<Self>) -> Self::Result {
+        let IgnorePath(path) = msg;
+        self.ignore.insert(path);
     }
 }

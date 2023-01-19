@@ -26,3 +26,8 @@ strip-ansi-escapes = "0.1.1"
 subprocess = "0.2.9"
 textwrap = "0.16.0"
 tui = "0.19.0"
+
+[profile.release]
+# remove symbols and debug information 
+# from binary to reduce its size
+strip = "symbols"

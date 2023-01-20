@@ -1,7 +1,7 @@
 use actix::clock::sleep;
 use actix::prelude::*;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
 use regex::Regex;
 use subprocess::{Exec, ExitStatus, Popen, Redirection};
@@ -19,6 +19,7 @@ use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
 };
+use url::Url;
 
 use crate::config::Config;
 use crate::config::Task;
@@ -155,24 +156,30 @@ impl OutputRedirection {
     /// - whiz://virtual_views -> Tab
     /// - file:///dev/null -> File
     /// - ./logs/server.log -> File
-    pub fn from_str(redirection_uri: &str) -> Self {
-        let protocol_separator_pattern = Regex::new("://").unwrap();
-        let split: Vec<&str> = protocol_separator_pattern
-            .splitn(redirection_uri, 2)
-            .collect();
-
-        // redirection URIs without protocol separator are
-        // by default treated as file paths
-        if split.len() < 2 {
-            return OutputRedirection::File(redirection_uri.to_owned());
+    pub fn from_str(redirection_uri: &str) -> Result<Self> {
+        // URIs that do not start with a scheme are considered files by default
+        if redirection_uri.starts_with('/') || redirection_uri.starts_with('.') {
+            let output_redirection = OutputRedirection::File(redirection_uri.to_string());
+            return Ok(output_redirection);
         }
 
-        let protocol = split[0];
-        let path = split[1];
+        let redirection_uri = Url::parse(redirection_uri)?;
 
-        match protocol {
-            "whiz" => OutputRedirection::Tab(path.to_owned()),
-            _ => OutputRedirection::File(path.to_owned()),
+        let scheme = redirection_uri.scheme();
+        let host = redirection_uri.host();
+
+        let mut path = String::new();
+
+        if let Some(host) = host {
+            path += &host.to_string();
+        }
+
+        path += redirection_uri.path();
+
+        match scheme {
+            "whiz" => Ok(OutputRedirection::Tab(path)),
+            "file" => Ok(OutputRedirection::File(path)),
+            _ => Err(anyhow!("unsupported scheme")),
         }
     }
 }
@@ -354,7 +361,7 @@ impl CommandActor {
                         continue;
                     }
 
-                    let redirection = OutputRedirection::from_str(redirection);
+                    let redirection = OutputRedirection::from_str(redirection).unwrap();
 
                     match redirection {
                         OutputRedirection::Tab(name) => {
@@ -429,7 +436,7 @@ impl Actor for CommandActor {
         self.self_addr = Some(addr.clone());
 
         for redirection in self.operator.pipe.values() {
-            let redirection = OutputRedirection::from_str(redirection);
+            let redirection = OutputRedirection::from_str(redirection).unwrap();
             match redirection {
                 OutputRedirection::Tab(name) => {
                     self.console.do_send(Register {

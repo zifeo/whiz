@@ -7,13 +7,14 @@ use std::{
 
 use anyhow::{anyhow, bail, Result};
 use indexmap::IndexMap;
+use regex::Regex;
 use serde::Deserialize;
 
 use std::fs::File;
 
 pub mod pipe;
 
-pub use pipe::OutputRedirection;
+use pipe::{OutputRedirection, Pipe};
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -286,6 +287,25 @@ impl Config {
             ignores.extend(all_log_files.clone().into_iter());
             job_operator.ignore = Lift::More(ignores);
         }
+    }
+
+    /// Parses the pipes of each task to make sure they are valid and returns
+    /// a [`HashMap`] where the keys are the task names and the values
+    /// are the parsed pipes.
+    pub fn get_pipes(&self) -> Result<HashMap<String, Vec<Pipe>>> {
+        let mut pipes = HashMap::new();
+
+        for (task_name, task) in &self.ops {
+            for (regex, redirection) in &task.pipe {
+                let regex = Regex::new(regex)?;
+                let redirection = OutputRedirection::from_str(redirection)?;
+                let pipe = Pipe(regex, redirection);
+                let task_pipes: &mut Vec<Pipe> = pipes.entry(task_name.to_owned()).or_default();
+                task_pipes.push(pipe);
+            }
+        }
+
+        Ok(pipes)
     }
 
     /// Remove dependencies that are child of another dependency for

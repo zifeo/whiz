@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::{env, future::Future};
 
@@ -78,6 +79,7 @@ fn hello() {
             watcher,
             env::current_dir().unwrap(),
             false,
+            HashMap::new(),
         );
 
         let status = commands[0].send(WaitStatus).await?;

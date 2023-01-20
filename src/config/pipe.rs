@@ -1,9 +1,16 @@
 use std::str::FromStr;
 
 use anyhow::anyhow;
+use regex::Regex;
 use url::Url;
 
+/// A pipe represents the redirection of the output of a task
+/// matched by a regular expression to an [`OutputRedirection`].
+#[derive(Clone)]
+pub struct Pipe(pub Regex, pub OutputRedirection);
+
 /// Set of places to which the output of a task can be redirected.
+#[derive(Clone)]
 pub enum OutputRedirection {
     /// Indicates that the output of a task should be sent
     /// to a new virtual tab with the given name.

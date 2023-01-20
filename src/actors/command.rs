@@ -14,14 +14,16 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
-use std::str::FromStr;
 use std::{collections::HashMap, env, time::Duration};
 use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
 };
 
-use crate::config::{pipe::OutputRedirection, Config, Task};
+use crate::config::{
+    pipe::{OutputRedirection, Pipe},
+    Config, Task,
+};
 
 use super::console::{Output, Register};
 use super::watcher::{IgnorePath, WatchGlob};
@@ -113,6 +115,7 @@ pub struct CommandActor {
     verbose: bool,
     started_at: DateTime<Local>,
     shared_env: HashMap<String, String>,
+    pipes: HashMap<String, Vec<Pipe>>,
 }
 
 pub fn resolve_env(
@@ -139,6 +142,7 @@ impl CommandActor {
         watcher: Addr<WatcherAct>,
         base_dir: PathBuf,
         verbose: bool,
+        pipes: HashMap<String, Vec<Pipe>>,
     ) -> Vec<Addr<CommandActor>> {
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
 
@@ -157,6 +161,7 @@ impl CommandActor {
                 base_dir.clone(),
                 verbose,
                 config.env.clone(),
+                pipes.clone(),
             )
             .start();
 
@@ -183,6 +188,7 @@ impl CommandActor {
         base_dir: PathBuf,
         verbose: bool,
         shared_env: HashMap<String, String>,
+        pipes: HashMap<String, Vec<Pipe>>,
     ) -> Self {
         Self {
             op_name,
@@ -198,6 +204,7 @@ impl CommandActor {
             verbose,
             started_at: Local::now(),
             shared_env,
+            pipes,
         }
     }
 
@@ -292,6 +299,7 @@ impl CommandActor {
         let operator = self.operator.clone();
         let base_dir = self.base_dir.clone();
         let watcher = self.watcher.clone();
+        let task_pipes = self.pipes.get(&self.op_name).unwrap_or(&Vec::new()).clone();
 
         let fut = async move {
             'output: for line in reader.lines() {
@@ -302,19 +310,15 @@ impl CommandActor {
                     base_dir = base_dir.join(workdir);
                 }
 
-                for (regex, redirection) in &operator.pipe {
-                    let regex = Regex::new(regex).unwrap();
-
+                for Pipe(regex, redirection) in &task_pipes {
                     if !regex.is_match(&line) {
                         continue;
                     }
 
-                    let redirection = OutputRedirection::from_str(redirection).unwrap();
-
                     match redirection {
                         OutputRedirection::Tab(name) => {
                             console.do_send(Output::now(
-                                name,
+                                name.to_owned(),
                                 line.clone(),
                                 log_files.clone(),
                                 false,
@@ -383,16 +387,14 @@ impl Actor for CommandActor {
         let addr = ctx.address();
         self.self_addr = Some(addr.clone());
 
-        for redirection in self.operator.pipe.values() {
-            let redirection = OutputRedirection::from_str(redirection).unwrap();
-            match redirection {
-                OutputRedirection::Tab(name) => {
-                    self.console.do_send(Register {
-                        title: name,
-                        addr: addr.clone(),
-                    });
-                }
-                OutputRedirection::File(_path) => {}
+        let task_pipes = self.pipes.get(&self.op_name).unwrap_or(&Vec::new()).clone();
+
+        for Pipe(_regex, redirection) in task_pipes {
+            if let OutputRedirection::Tab(name) = redirection {
+                self.console.do_send(Register {
+                    title: name,
+                    addr: addr.clone(),
+                });
             }
         }
 

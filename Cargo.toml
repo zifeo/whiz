@@ -2,7 +2,7 @@
 name = "whiz"
 version = "0.1.0"
 edition = "2021"
-description = "Modern DAG/tasks runner."
+description = "Modern DAG/tasks runner for multi-platform monorepos."
 license = "MPL-2.0"
 
 [dependencies]

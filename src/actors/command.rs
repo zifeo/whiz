@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+use std::str::FromStr;
 use std::{collections::HashMap, env, time::Duration};
 use std::{
     io::{BufRead, BufReader},
@@ -143,7 +144,9 @@ enum OutputRedirection {
     File(String),
 }
 
-impl OutputRedirection {
+impl FromStr for OutputRedirection {
+    type Err = anyhow::Error;
+
     /// Creates a new [`OutputRedirection`] from the given redirection URI.
     ///
     /// Available URI schemes:
@@ -156,7 +159,7 @@ impl OutputRedirection {
     /// - whiz://virtual_views -> Tab
     /// - file:///dev/null -> File
     /// - ./logs/server.log -> File
-    pub fn from_str(redirection_uri: &str) -> Result<Self> {
+    fn from_str(redirection_uri: &str) -> anyhow::Result<Self> {
         // URIs that do not start with a scheme are considered files by default
         if redirection_uri.starts_with('/') || redirection_uri.starts_with('.') {
             let output_redirection = OutputRedirection::File(redirection_uri.to_string());

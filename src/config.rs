@@ -11,6 +11,10 @@ use serde::Deserialize;
 
 use std::fs::File;
 
+pub mod pipe;
+
+pub use pipe::OutputRedirection;
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Lift<T> {

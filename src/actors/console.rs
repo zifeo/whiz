@@ -1,9 +1,8 @@
 use actix::prelude::*;
 use ansi_to_tui::IntoText;
 use chrono::prelude::*;
-use std::io::Write;
+use std::str;
 use std::{cmp::min, collections::HashMap, io};
-use std::{fs, str};
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::Frame;
@@ -332,17 +331,15 @@ impl Handler<TermEvent> for ConsoleActor {
 pub struct Output {
     op: String,
     pub message: String,
-    log_files: Vec<String>,
     service: bool,
     timestamp: DateTime<Local>,
 }
 
 impl Output {
-    pub fn now(op: String, message: String, log_files: Vec<String>, service: bool) -> Self {
+    pub fn now(op: String, message: String, service: bool) -> Self {
         Self {
             op,
             message,
-            log_files,
             service,
             timestamp: Local::now(),
         }
@@ -359,22 +356,6 @@ fn format_message(message: &str, timestamp: &DateTime<Local>) -> String {
     format!("{}  {}", timestamp.format("%H:%M:%S%.3f"), message)
 }
 
-/// Saves the output of a job into the given array of log files.
-fn log_output(content: &str, log_files: &Vec<String>, timestamp: &DateTime<Local>) {
-    for log_file in log_files {
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(log_file)
-            .unwrap();
-
-        let mut message = format_message(content, timestamp);
-        message.push('\n');
-        let message = strip_ansi_escapes::strip(message).unwrap();
-        file.write_all(&message).unwrap();
-    }
-}
-
 impl Handler<Output> for ConsoleActor {
     type Result = ();
 
@@ -384,8 +365,6 @@ impl Handler<Output> for ConsoleActor {
             true => Style::default().bg(Color::DarkGray),
             false => Style::default(),
         };
-
-        log_output(&msg.message, &msg.log_files, &msg.timestamp);
 
         let message = match self.timestamp {
             true => format_message(&msg.message, &msg.timestamp),

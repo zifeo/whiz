@@ -210,10 +210,8 @@ impl CommandActor {
 
     fn log_info(&self, log: String) {
         let job_name = self.op_name.clone();
-        let log_files = self.operator.log.resolve();
 
-        self.console
-            .do_send(Output::now(job_name, log, log_files, true));
+        self.console.do_send(Output::now(job_name, log, true));
     }
 
     fn log_debug(&self, log: String) {
@@ -293,7 +291,6 @@ impl CommandActor {
 
         let console = self.console.clone();
         let op_name = self.op_name.clone();
-        let log_files = self.operator.log.resolve();
         let self_addr = self.self_addr.clone();
         let started_at = Local::now();
         let operator = self.operator.clone();
@@ -317,12 +314,7 @@ impl CommandActor {
 
                     match redirection {
                         OutputRedirection::Tab(name) => {
-                            console.do_send(Output::now(
-                                name.to_owned(),
-                                line.clone(),
-                                log_files.clone(),
-                                false,
-                            ));
+                            console.do_send(Output::now(name.to_owned(), line.clone(), false));
                         }
                         OutputRedirection::File(path) => {
                             let path = regex.replace(&line, path);
@@ -359,12 +351,7 @@ impl CommandActor {
                     continue 'output;
                 }
 
-                console.do_send(Output::now(
-                    op_name.clone(),
-                    line.clone(),
-                    log_files.clone(),
-                    false,
-                ));
+                console.do_send(Output::now(op_name.clone(), line.clone(), false));
             }
 
             if let Some(addr) = self_addr {

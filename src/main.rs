@@ -45,9 +45,7 @@ fn main() -> Result<()> {
         }
     };
 
-    let base_dir = config_path.parent().unwrap().to_path_buf();
-
-    let mut config = match Config::from_file(&config_file, &base_dir) {
+    let mut config = match Config::from_file(&config_file) {
         Ok(conf) => conf,
         Err(err) => {
             println!("config error: {}", err);
@@ -73,6 +71,8 @@ fn main() -> Result<()> {
         println!("List of jobs:\n{formatted_list_of_jobs}");
         process::exit(0);
     }
+
+    let base_dir = config_path.parent().unwrap().to_path_buf();
 
     let system = System::new();
     let exec = async move {

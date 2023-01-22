@@ -6,6 +6,9 @@ speedy:
     watch:
         - "src/**/*.rs"
 
+err:
+    command: exit 1
+
 once:
     workdir: .
     watch: "*"

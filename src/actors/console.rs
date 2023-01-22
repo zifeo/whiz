@@ -3,6 +3,7 @@ use ansi_to_tui::IntoText;
 use chrono::prelude::*;
 use std::str;
 use std::{cmp::min, collections::HashMap, io};
+use subprocess::ExitStatus;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::Frame;
@@ -30,6 +31,7 @@ pub struct Panel {
     lines: u16,
     shift: u16,
     command: Addr<CommandActor>,
+    status: Option<ExitStatus>,
 }
 
 impl Panel {
@@ -39,6 +41,7 @@ impl Panel {
             lines: 0,
             shift: 0,
             command,
+            status: None,
         }
     }
 }
@@ -163,7 +166,12 @@ impl ConsoleActor {
                         .order
                         .iter()
                         .map(|panel| {
-                            Spans::from(Span::styled(panel, Style::default().fg(Color::Green)))
+                            let span = match self.panels.get(panel).map(|p| p.status).unwrap() {
+                                Some(ExitStatus::Exited(0)) => Span::styled(format!("{}.", panel), Style::default().fg(Color::Green)),
+                                Some(_) => Span::styled(format!("{}!", panel), Style::default().fg(Color::Red)),
+                                None => Span::styled(format!("{}*", panel), Style::default()),
+                            };
+                            Spans::from(span)
                         })
                         .collect();
                     /*
@@ -329,16 +337,16 @@ impl Handler<TermEvent> for ConsoleActor {
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct Output {
-    op: String,
+    panel_name: String,
     pub message: String,
     service: bool,
     timestamp: DateTime<Local>,
 }
 
 impl Output {
-    pub fn now(op: String, message: String, service: bool) -> Self {
+    pub fn now(panel_name: String, message: String, service: bool) -> Self {
         Self {
-            op,
+            panel_name,
             message,
             service,
             timestamp: Local::now(),
@@ -355,7 +363,7 @@ impl Handler<Output> for ConsoleActor {
     type Result = ();
 
     fn handle(&mut self, msg: Output, _: &mut Context<Self>) -> Self::Result {
-        let focused_panel = self.panels.get_mut(&msg.op).unwrap();
+        let panel = self.panels.get_mut(&msg.panel_name).unwrap();
         let style = match msg.service {
             true => Style::default().bg(Color::DarkGray),
             false => Style::default(),
@@ -366,24 +374,49 @@ impl Handler<Output> for ConsoleActor {
             false => msg.message,
         };
         let width = self.terminal.get_frame().size().width;
-        focused_panel.lines += wrapped_lines(&message, width);
-        focused_panel.logs.push((message, style));
+        panel.lines += wrapped_lines(&message, width);
+        panel.logs.push((message, style));
         self.draw();
     }
 }
 
 #[derive(Message)]
 #[rtype(result = "()")]
-pub struct Register {
-    pub title: String,
+pub struct RegisterPanel {
+    pub name: String,
     pub addr: Addr<CommandActor>,
 }
 
-impl Handler<Register> for ConsoleActor {
+impl Handler<RegisterPanel> for ConsoleActor {
     type Result = ();
 
-    fn handle(&mut self, msg: Register, _: &mut Context<Self>) -> Self::Result {
-        self.panels.insert(msg.title.clone(), Panel::new(msg.addr));
+    fn handle(&mut self, msg: RegisterPanel, _: &mut Context<Self>) -> Self::Result {
+        self.panels.insert(msg.name.clone(), Panel::new(msg.addr));
+        self.draw();
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct PanelStatus {
+    pub panel_name: String,
+    pub status: Option<ExitStatus>,
+}
+
+impl Handler<PanelStatus> for ConsoleActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: PanelStatus, ctx: &mut Context<Self>) -> Self::Result {
+        let focused_panel = self.panels.get_mut(&msg.panel_name).unwrap();
+        focused_panel.status = msg.status;
+
+        let message = msg
+            .status
+            .map(|c| format!("{:?}", c))
+            .unwrap_or_else(|| "?".to_string());
+        ctx.address()
+            .do_send(Output::now(msg.panel_name, message, true));
+
         self.draw();
     }
 }

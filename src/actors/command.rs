@@ -308,13 +308,9 @@ impl CommandActor {
                     base_dir = base_dir.join(workdir);
                 }
 
-                let mut output_redirected = false;
-
                 let task_pipe = task_pipes.iter().find(|pipe| pipe.regex.is_match(&line));
 
                 if let Some(pipe) = task_pipe {
-                    output_redirected = true;
-
                     match &pipe.redirection {
                         OutputRedirection::Tab(name) => {
                             console.do_send(Output::now(name.to_owned(), line.clone(), false));
@@ -350,9 +346,7 @@ impl CommandActor {
                             file.write_all(line.clone().as_bytes()).unwrap();
                         }
                     }
-                }
-
-                if !output_redirected {
+                } else {
                     console.do_send(Output::now(op_name.clone(), line.clone(), false));
                 }
             }

@@ -115,7 +115,7 @@ pub struct CommandActor {
     verbose: bool,
     started_at: DateTime<Local>,
     shared_env: HashMap<String, String>,
-    pipes: HashMap<String, Vec<Pipe>>,
+    pipes: Vec<Pipe>,
 }
 
 pub fn resolve_env(
@@ -142,12 +142,13 @@ impl CommandActor {
         watcher: Addr<WatcherAct>,
         base_dir: PathBuf,
         verbose: bool,
-        pipes: HashMap<String, Vec<Pipe>>,
+        pipes_map: HashMap<String, Vec<Pipe>>,
     ) -> Vec<Addr<CommandActor>> {
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
 
         for (op_name, nexts) in config.build_dag().unwrap().into_iter() {
             let op = config.ops.get(&op_name).unwrap();
+            let task_pipes = pipes_map.get(&op_name).unwrap_or(&Vec::new()).clone();
 
             let actor = CommandActor::new(
                 op_name.clone(),
@@ -161,7 +162,7 @@ impl CommandActor {
                 base_dir.clone(),
                 verbose,
                 config.env.clone(),
-                pipes.clone(),
+                task_pipes,
             )
             .start();
 
@@ -188,7 +189,7 @@ impl CommandActor {
         base_dir: PathBuf,
         verbose: bool,
         shared_env: HashMap<String, String>,
-        pipes: HashMap<String, Vec<Pipe>>,
+        pipes: Vec<Pipe>,
     ) -> Self {
         Self {
             op_name,
@@ -296,7 +297,7 @@ impl CommandActor {
         let operator = self.operator.clone();
         let base_dir = self.base_dir.clone();
         let watcher = self.watcher.clone();
-        let task_pipes = self.pipes.get(&self.op_name).unwrap_or(&Vec::new()).clone();
+        let task_pipes = self.pipes.clone();
 
         let fut = async move {
             'output: for line in reader.lines() {
@@ -374,12 +375,10 @@ impl Actor for CommandActor {
         let addr = ctx.address();
         self.self_addr = Some(addr.clone());
 
-        let task_pipes = self.pipes.get(&self.op_name).unwrap_or(&Vec::new()).clone();
-
-        for Pipe(_regex, redirection) in task_pipes {
+        for Pipe(_regex, redirection) in &self.pipes {
             if let OutputRedirection::Tab(name) = redirection {
                 self.console.do_send(Register {
-                    title: name,
+                    title: name.to_owned(),
                     addr: addr.clone(),
                 });
             }

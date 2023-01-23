@@ -310,48 +310,45 @@ impl CommandActor {
 
                 let mut output_redirected = false;
 
-                for pipe in &task_pipes {
-                    if pipe.regex.is_match(&line) {
-                        output_redirected = true;
+                let task_pipe = task_pipes.iter().find(|pipe| pipe.regex.is_match(&line));
 
-                        match &pipe.redirection {
-                            OutputRedirection::Tab(name) => {
-                                console.do_send(Output::now(name.to_owned(), line.clone(), false));
-                            }
-                            OutputRedirection::File(path) => {
-                                let path = pipe.regex.replace(&line, path);
-                                let mut path = Path::new(path.as_ref()).to_path_buf();
+                if let Some(pipe) = task_pipe {
+                    output_redirected = true;
 
-                                // prepend base dir if the log file path is relative
-                                if !path.starts_with("/") {
-                                    path = base_dir.join(path);
-                                }
-
-                                let log_folder = Path::new(&path).parent().unwrap();
-                                fs::create_dir_all(log_folder).unwrap();
-
-                                // file must be created and opened on each loop
-                                // as the path is dynamic, therefore there
-                                // is no a way to optimize it to create it
-                                // only once
-                                let mut file = fs::OpenOptions::new()
-                                    .create(true)
-                                    .append(true)
-                                    .open(&path)
-                                    .unwrap();
-
-                                // exlude file path from watcher before writing to it
-                                // to avoid infinite loops
-                                watcher.do_send(IgnorePath(path));
-
-                                // append new line since strings from the buffer reader don't include it
-                                line.push('\n');
-                                file.write_all(line.clone().as_bytes()).unwrap();
-                            }
+                    match &pipe.redirection {
+                        OutputRedirection::Tab(name) => {
+                            console.do_send(Output::now(name.to_owned(), line.clone(), false));
                         }
+                        OutputRedirection::File(path) => {
+                            let path = pipe.regex.replace(&line, path);
+                            let mut path = Path::new(path.as_ref()).to_path_buf();
 
-                        // skip next pipes since the output has been redirected
-                        break;
+                            // prepend base dir if the log file path is relative
+                            if !path.starts_with("/") {
+                                path = base_dir.join(path);
+                            }
+
+                            let log_folder = Path::new(&path).parent().unwrap();
+                            fs::create_dir_all(log_folder).unwrap();
+
+                            // file must be created and opened on each loop
+                            // as the path is dynamic, therefore there
+                            // is no a way to optimize it to create it
+                            // only once
+                            let mut file = fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&path)
+                                .unwrap();
+
+                            // exlude file path from watcher before writing to it
+                            // to avoid infinite loops
+                            watcher.do_send(IgnorePath(path));
+
+                            // append new line since strings from the buffer reader don't include it
+                            line.push('\n');
+                            file.write_all(line.clone().as_bytes()).unwrap();
+                        }
                     }
                 }
 

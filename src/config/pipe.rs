@@ -21,7 +21,7 @@ impl Pipe {
     ///
     /// The configuration provided is a tuple of strings with the format of
     /// ([`Regex`], [`OutputRedirection`]).
-    pub fn from(pipe_config: (&str, &str)) -> anyhow::Result<Self> {
+    pub fn from(pipe_config: (&String, &String)) -> anyhow::Result<Self> {
         let (regex, redirection) = pipe_config;
         let regex = Regex::new(regex)?;
         let lazy_redirection = OutputRedirection::from_str(redirection)?;

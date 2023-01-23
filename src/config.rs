@@ -252,7 +252,7 @@ impl Config {
     /// Parses the pipes of each task to make sure they are valid and returns
     /// a [`HashMap`] where the keys are the task names and the values
     /// are the parsed pipes.
-    pub fn get_pipes(&self) -> Result<HashMap<String, Vec<Pipe>>> {
+    pub fn get_pipes_map(&self) -> Result<HashMap<String, Vec<Pipe>>> {
         let mut pipes = HashMap::new();
 
         for (task_name, task) in &self.ops {

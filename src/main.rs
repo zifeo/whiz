@@ -53,8 +53,8 @@ fn main() -> Result<()> {
         }
     };
 
-    let pipes = match config.get_pipes() {
-        Ok(pipes) => pipes,
+    let pipes_map = match config.get_pipes_map() {
+        Ok(pipes_map) => pipes_map,
         Err(err) => {
             println!("config error: {}", err);
             process::exit(2);
@@ -85,7 +85,7 @@ fn main() -> Result<()> {
             watcher,
             base_dir.clone(),
             args.verbose,
-            pipes,
+            pipes_map,
         );
     };
 

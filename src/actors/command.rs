@@ -300,7 +300,7 @@ impl CommandActor {
         let task_pipes = self.pipes.clone();
 
         let fut = async move {
-            'output: for line in reader.lines() {
+            for line in reader.lines() {
                 let mut line = line.unwrap();
                 let mut base_dir = base_dir.clone();
 
@@ -310,49 +310,45 @@ impl CommandActor {
 
                 for Pipe(regex, redirection) in &task_pipes {
                     if !regex.is_match(&line) {
-                        continue;
-                    }
-
-                    match redirection {
-                        OutputRedirection::Tab(name) => {
-                            console.do_send(Output::now(name.to_owned(), line.clone(), false));
-                        }
-                        OutputRedirection::File(path) => {
-                            let path = regex.replace(&line, path);
-                            let mut path = Path::new(path.as_ref()).to_path_buf();
-
-                            // prepend base dir if the log file path is relative
-                            if !path.starts_with("/") {
-                                path = base_dir.join(path);
+                        console.do_send(Output::now(op_name.clone(), line.clone(), false));
+                    } else {
+                        match redirection {
+                            OutputRedirection::Tab(name) => {
+                                console.do_send(Output::now(name.to_owned(), line.clone(), false));
                             }
+                            OutputRedirection::File(path) => {
+                                let path = regex.replace(&line, path);
+                                let mut path = Path::new(path.as_ref()).to_path_buf();
 
-                            let log_folder = Path::new(&path).parent().unwrap();
-                            fs::create_dir_all(log_folder).unwrap();
+                                // prepend base dir if the log file path is relative
+                                if !path.starts_with("/") {
+                                    path = base_dir.join(path);
+                                }
 
-                            // file must be created and opened on each loop
-                            // as the path is dynamic, therefore there
-                            // is no a way to optimize it to create it
-                            // only once
-                            let mut file = fs::OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open(&path)
-                                .unwrap();
+                                let log_folder = Path::new(&path).parent().unwrap();
+                                fs::create_dir_all(log_folder).unwrap();
 
-                            // exlude file path from watcher before writing to it
-                            // to avoid infinite loops
-                            watcher.do_send(IgnorePath(path));
+                                // file must be created and opened on each loop
+                                // as the path is dynamic, therefore there
+                                // is no a way to optimize it to create it
+                                // only once
+                                let mut file = fs::OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(&path)
+                                    .unwrap();
 
-                            // append new line since strings from the buffer reader don't include it
-                            line.push('\n');
-                            file.write_all(line.clone().as_bytes()).unwrap();
+                                // exlude file path from watcher before writing to it
+                                // to avoid infinite loops
+                                watcher.do_send(IgnorePath(path));
+
+                                // append new line since strings from the buffer reader don't include it
+                                line.push('\n');
+                                file.write_all(line.clone().as_bytes()).unwrap();
+                            }
                         }
                     }
-
-                    continue 'output;
                 }
-
-                console.do_send(Output::now(op_name.clone(), line.clone(), false));
             }
 
             if let Some(addr) = self_addr {

@@ -79,10 +79,6 @@ pub struct Task {
     /// `whiz://{task_name}` as default.
     #[serde(default)]
     pub pipe: HashMap<String, String>,
-
-    /// Array of file paths to save the output of a job.
-    #[serde(default)]
-    pub log: Lift<String>,
 }
 
 #[derive(Deserialize, Debug)]

@@ -300,7 +300,7 @@ impl CommandActor {
         let task_pipes = self.pipes.clone();
 
         let fut = async move {
-            'output: for line in reader.lines() {
+            for line in reader.lines() {
                 let mut line = line.unwrap();
                 let mut base_dir = base_dir.clone();
 
@@ -308,8 +308,12 @@ impl CommandActor {
                     base_dir = base_dir.join(workdir);
                 }
 
+                let mut output_redirected = false;
+
                 for pipe in &task_pipes {
                     if pipe.regex.is_match(&line) {
+                        output_redirected = true;
+
                         match &pipe.redirection {
                             OutputRedirection::Tab(name) => {
                                 console.do_send(Output::now(name.to_owned(), line.clone(), false));
@@ -346,11 +350,14 @@ impl CommandActor {
                             }
                         }
 
-                        continue 'output;
+                        // skip next pipes since the output has been redirected
+                        break;
                     }
                 }
 
-                console.do_send(Output::now(op_name.clone(), line.clone(), false));
+                if !output_redirected {
+                    console.do_send(Output::now(op_name.clone(), line.clone(), false));
+                }
             }
 
             if let Some(addr) = self_addr {

@@ -7,7 +7,14 @@ use url::Url;
 /// A pipe represents the redirection of the output of a task
 /// matched by a regular expression to an [`OutputRedirection`].
 #[derive(Clone)]
-pub struct Pipe(pub Regex, pub OutputRedirection);
+pub struct Pipe {
+    /// Regular expression used to capture the output of the task and
+    /// redirect it.
+    pub regex: Regex,
+    /// Redirection used if there is any content matching the regular
+    /// expression. Else, [`OutputRedirection::None`] will be used.
+    pub lazy_redirection: OutputRedirection,
+}
 
 impl Pipe {
     /// Returns a pipe from the configuration provided.
@@ -17,16 +24,17 @@ impl Pipe {
     pub fn from(pipe_config: (&str, &str)) -> anyhow::Result<Self> {
         let (regex, redirection) = pipe_config;
         let regex = Regex::new(regex)?;
-        let redirection = OutputRedirection::from_str(redirection)?;
-        Ok(Self(regex, redirection))
+        let lazy_redirection = OutputRedirection::from_str(redirection)?;
+        Ok(Self {
+            regex,
+            lazy_redirection,
+        })
     }
 
     /// Returns the [`OutputRedirection`] for the given task ouput.
     pub fn redirect(&self, line: &str) -> OutputRedirection {
-        let Self(regex, redirection) = &self;
-
-        if regex.is_match(line) {
-            redirection.clone()
+        if self.regex.is_match(line) {
+            self.lazy_redirection.clone()
         } else {
             OutputRedirection::None
         }

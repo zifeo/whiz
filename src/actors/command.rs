@@ -310,14 +310,13 @@ impl CommandActor {
 
                 for pipe in &task_pipes {
                     let redirection = pipe.redirect(&line);
-                    let Pipe(regex, _) = pipe;
 
                     match redirection {
                         OutputRedirection::Tab(name) => {
                             console.do_send(Output::now(name.to_owned(), line.clone(), false));
                         }
                         OutputRedirection::File(path) => {
-                            let path = regex.replace(&line, path);
+                            let path = pipe.regex.replace(&line, path);
                             let mut path = Path::new(path.as_ref()).to_path_buf();
 
                             // prepend base dir if the log file path is relative
@@ -373,8 +372,8 @@ impl Actor for CommandActor {
         let addr = ctx.address();
         self.self_addr = Some(addr.clone());
 
-        for Pipe(_regex, redirection) in &self.pipes {
-            if let OutputRedirection::Tab(name) = redirection {
+        for pipe in &self.pipes {
+            if let OutputRedirection::Tab(name) = &pipe.lazy_redirection {
                 self.console.do_send(Register {
                     title: name.to_owned(),
                     addr: addr.clone(),

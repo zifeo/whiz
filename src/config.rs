@@ -5,14 +5,13 @@ use std::{
 
 use anyhow::{anyhow, bail, Result};
 use indexmap::IndexMap;
-use regex::Regex;
 use serde::Deserialize;
 
 use std::fs::File;
 
 pub mod pipe;
 
-use pipe::{OutputRedirection, Pipe};
+use pipe::Pipe;
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -258,9 +257,7 @@ impl Config {
 
         for (task_name, task) in &self.ops {
             for (regex, redirection) in &task.pipe {
-                let regex = Regex::new(regex)?;
-                let redirection = OutputRedirection::from_str(redirection)?;
-                let pipe = Pipe(regex, redirection);
+                let pipe = Pipe::from((regex, redirection))?;
                 let task_pipes: &mut Vec<Pipe> = pipes.entry(task_name.to_owned()).or_default();
                 task_pipes.push(pipe);
             }

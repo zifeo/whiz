@@ -9,6 +9,19 @@ use url::Url;
 #[derive(Clone)]
 pub struct Pipe(pub Regex, pub OutputRedirection);
 
+impl Pipe {
+    /// Returns a pipe from the configuration provided.
+    ///
+    /// The configuration provided is a tuple of strings with the format of
+    /// ([`Regex`], [`OutputRedirection`]).
+    pub fn from(pipe_config: (&str, &str)) -> anyhow::Result<Self> {
+        let (regex, redirection) = pipe_config;
+        let regex = Regex::new(regex)?;
+        let redirection = OutputRedirection::from_str(redirection)?;
+        Ok(Self(regex, redirection))
+    }
+}
+
 /// Set of places to which the output of a task can be redirected.
 #[derive(Clone)]
 pub enum OutputRedirection {

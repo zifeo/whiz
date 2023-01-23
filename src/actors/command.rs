@@ -310,13 +310,13 @@ impl CommandActor {
 
                 let task_pipe = task_pipes.iter().find(|pipe| pipe.regex.is_match(&line));
 
-                if let Some(pipe) = task_pipe {
-                    match &pipe.redirection {
+                if let Some(task_pipe) = task_pipe {
+                    match &task_pipe.redirection {
                         OutputRedirection::Tab(name) => {
                             console.do_send(Output::now(name.to_owned(), line.clone(), false));
                         }
                         OutputRedirection::File(path) => {
-                            let path = pipe.regex.replace(&line, path);
+                            let path = task_pipe.regex.replace(&line, path);
                             let mut path = Path::new(path.as_ref()).to_path_buf();
 
                             // prepend base dir if the log file path is relative

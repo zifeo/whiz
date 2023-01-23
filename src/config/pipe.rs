@@ -11,9 +11,8 @@ pub struct Pipe {
     /// Regular expression used to capture the output of the task and
     /// redirect it.
     pub regex: Regex,
-    /// Redirection used if there is any content matching the regular
-    /// expression. Else, [`OutputRedirection::None`] will be used.
-    pub lazy_redirection: OutputRedirection,
+    /// The place where the ouput matched by the regex is sent.
+    pub redirection: OutputRedirection,
 }
 
 impl Pipe {
@@ -24,20 +23,8 @@ impl Pipe {
     pub fn from(pipe_config: (&String, &String)) -> anyhow::Result<Self> {
         let (regex, redirection) = pipe_config;
         let regex = Regex::new(regex)?;
-        let lazy_redirection = OutputRedirection::from_str(redirection)?;
-        Ok(Self {
-            regex,
-            lazy_redirection,
-        })
-    }
-
-    /// Returns the [`OutputRedirection`] for the given task ouput.
-    pub fn redirect(&self, line: &str) -> OutputRedirection {
-        if self.regex.is_match(line) {
-            self.lazy_redirection.clone()
-        } else {
-            OutputRedirection::None
-        }
+        let redirection = OutputRedirection::from_str(redirection)?;
+        Ok(Self { regex, redirection })
     }
 }
 
@@ -50,8 +37,6 @@ pub enum OutputRedirection {
     /// Indicates that the output of a task should be saved
     /// as a log file in the given path.
     File(String),
-    /// Indicates that the output of a task should not be redirected.
-    None,
 }
 
 impl FromStr for OutputRedirection {

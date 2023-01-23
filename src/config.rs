@@ -257,8 +257,8 @@ impl Config {
 
         for (task_name, task) in &self.ops {
             for pipe_config in &task.pipe {
-                let pipe = Pipe::from(pipe_config)?;
                 let task_pipes: &mut Vec<Pipe> = pipes.entry(task_name.to_owned()).or_default();
+                let pipe = Pipe::from(pipe_config)?;
                 task_pipes.push(pipe);
             }
         }

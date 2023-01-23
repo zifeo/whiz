@@ -20,6 +20,17 @@ impl Pipe {
         let redirection = OutputRedirection::from_str(redirection)?;
         Ok(Self(regex, redirection))
     }
+
+    /// Returns the [`OutputRedirection`] for the given task ouput.
+    pub fn redirect(&self, line: &str) -> OutputRedirection {
+        let Self(regex, redirection) = &self;
+
+        if regex.is_match(line) {
+            redirection.clone()
+        } else {
+            OutputRedirection::None
+        }
+    }
 }
 
 /// Set of places to which the output of a task can be redirected.
@@ -31,6 +42,8 @@ pub enum OutputRedirection {
     /// Indicates that the output of a task should be saved
     /// as a log file in the given path.
     File(String),
+    /// Indicates that the output of a task should not be redirected.
+    None,
 }
 
 impl FromStr for OutputRedirection {

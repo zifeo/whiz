@@ -308,44 +308,46 @@ impl CommandActor {
                     base_dir = base_dir.join(workdir);
                 }
 
-                for Pipe(regex, redirection) in &task_pipes {
-                    if !regex.is_match(&line) {
-                        console.do_send(Output::now(op_name.clone(), line.clone(), false));
-                    } else {
-                        match redirection {
-                            OutputRedirection::Tab(name) => {
-                                console.do_send(Output::now(name.to_owned(), line.clone(), false));
+                for pipe in &task_pipes {
+                    let redirection = pipe.redirect(&line);
+                    let Pipe(regex, _) = pipe;
+
+                    match redirection {
+                        OutputRedirection::Tab(name) => {
+                            console.do_send(Output::now(name.to_owned(), line.clone(), false));
+                        }
+                        OutputRedirection::File(path) => {
+                            let path = regex.replace(&line, path);
+                            let mut path = Path::new(path.as_ref()).to_path_buf();
+
+                            // prepend base dir if the log file path is relative
+                            if !path.starts_with("/") {
+                                path = base_dir.join(path);
                             }
-                            OutputRedirection::File(path) => {
-                                let path = regex.replace(&line, path);
-                                let mut path = Path::new(path.as_ref()).to_path_buf();
 
-                                // prepend base dir if the log file path is relative
-                                if !path.starts_with("/") {
-                                    path = base_dir.join(path);
-                                }
+                            let log_folder = Path::new(&path).parent().unwrap();
+                            fs::create_dir_all(log_folder).unwrap();
 
-                                let log_folder = Path::new(&path).parent().unwrap();
-                                fs::create_dir_all(log_folder).unwrap();
+                            // file must be created and opened on each loop
+                            // as the path is dynamic, therefore there
+                            // is no a way to optimize it to create it
+                            // only once
+                            let mut file = fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&path)
+                                .unwrap();
 
-                                // file must be created and opened on each loop
-                                // as the path is dynamic, therefore there
-                                // is no a way to optimize it to create it
-                                // only once
-                                let mut file = fs::OpenOptions::new()
-                                    .create(true)
-                                    .append(true)
-                                    .open(&path)
-                                    .unwrap();
+                            // exlude file path from watcher before writing to it
+                            // to avoid infinite loops
+                            watcher.do_send(IgnorePath(path));
 
-                                // exlude file path from watcher before writing to it
-                                // to avoid infinite loops
-                                watcher.do_send(IgnorePath(path));
-
-                                // append new line since strings from the buffer reader don't include it
-                                line.push('\n');
-                                file.write_all(line.clone().as_bytes()).unwrap();
-                            }
+                            // append new line since strings from the buffer reader don't include it
+                            line.push('\n');
+                            file.write_all(line.clone().as_bytes()).unwrap();
+                        }
+                        OutputRedirection::None => {
+                            console.do_send(Output::now(op_name.clone(), line.clone(), false));
                         }
                     }
                 }

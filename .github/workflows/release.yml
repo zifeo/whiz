@@ -1,16 +1,85 @@
+name: Release artifacts
+
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
 
 jobs:
   check-bump:
     runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check version
+        run: |
+          # whiz version message example: whiz v0.1.0
+          VERSION=$(cargo run -- --version | cut --delimiter=' ' --fields=2)
+          if [[ "${{ github.ref_name }}" != "$VERSION" ]]; then
+            echo "Tag does not match code version, stopping."
+            exit -1
+          fi
+          echo "Releasing $VERSION"
+
+  build:
+    needs:
+      - check-bump
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: ""
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: ".exe"
+    permissions:
+      # contents permission to upload artifacts and create new release notes
+      contents: write
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: katyo/publish-crates@v1
         with:
-          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          ignore-unpublished-changes: true
+          key: ${{ runner.os }}
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: "--locked --release --target ${{ matrix.target }}"
+
+      - name: Export enviroment variables
+        run: |
+          echo "artifact_name=whiz-${{ github.ref_name }}-${{ matrix.target }}.zip" >> $GITHUB_ENV
+          echo "build_name=whiz${{ matrix.suffix }}" >> $GITHUB_ENV
+          echo "build_path=target/${{ matrix.target }}/release" >> $GITHUB_ENV
+
+      - name: Zip
+        run: |
+          mv "${{ env.build_path }}/${{ env.build_name }}" .
+
+          # best zip compression
+          7z \
+          a \
+          -mm=Deflate \
+          -mfb=273 \
+          -mpass=15 \
+          "${{ env.artifact_name }}" \
+          "${{ env.build_name }}"
+
+      - uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          generateReleaseNotes: true
+          artifacts: "${{ env.artifact_name }}"

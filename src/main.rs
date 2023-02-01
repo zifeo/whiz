@@ -2,7 +2,7 @@ use actix::prelude::*;
 use whiz::{
     actors::{command::CommandActor, console::ConsoleActor, watcher::WatcherActor},
     config::Config,
-    subcommands::{upgrade, Command},
+    subcommands::Command,
     utils::recurse_config_file,
 };
 
@@ -40,9 +40,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     if let Some(command) = &args.command {
-        match command {
-            Command::Upgrade => upgrade::upgrade().unwrap(),
-        }
+        command.run();
         process::exit(0);
     };
 

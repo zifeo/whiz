@@ -1,4 +1,4 @@
-name: Release artifacts
+name: Release
 
 on:
   push:
@@ -39,12 +39,6 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             suffix: ".exe"
-    permissions:
-      # contents permission to upload artifacts and create new release notes
-      contents: write
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
@@ -59,21 +53,18 @@ jobs:
           command: build
           args: "--locked --release --target ${{ matrix.target }}"
 
-      - name: Zip
+      - name: Compress
         run: |
           mv "target/${{ matrix.target }}/release/whiz${{ matrix.suffix }}" .
 
-          # best zip compression
-          7z \
-          a \
-          -mm=Deflate \
-          -mfb=273 \
-          -mpass=15 \
-          "whiz-${{ github.ref_name }}-${{ matrix.target }}.zip" \
-          "whiz${{ matrix.suffix }}"
+          tar czvf \
+            "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" \
+            "whiz${{ matrix.suffix }}"
 
-      - uses: ncipollo/release-action@v1
+      - name: Upload
+        uses: svenstaro/upload-release-action@v2
         with:
-          allowUpdates: true
-          generateReleaseNotes: true
-          artifacts: "whiz-${{ github.ref_name }}-${{ matrix.target }}.zip"
+          tag: ${{ github.ref }}
+          file: "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
+          asset_name: "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
+          overwrite: false

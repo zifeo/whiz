@@ -5,7 +5,7 @@ use anyhow::{Ok, Result};
 use subprocess::ExitStatus;
 
 use crate::actors::command::WaitStatus;
-use crate::actors::console::Register;
+use crate::actors::console::RegisterPanel;
 use crate::actors::watcher::WatchGlob;
 use crate::{
     actors::{
@@ -55,7 +55,7 @@ fn hello() {
                 println!("---{:?}", msg.message);
                 Some(())
             },
-            _msg: Register => Some(()),
+            _msg: RegisterPanel => Some(()),
             _msg: TermEvent => Some(()),
         });
 

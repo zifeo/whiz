@@ -59,15 +59,9 @@ jobs:
           command: build
           args: "--locked --release --target ${{ matrix.target }}"
 
-      - name: Export enviroment variables
-        run: |
-          echo "artifact_name=whiz-${{ github.ref_name }}-${{ matrix.target }}.zip" >> $GITHUB_ENV
-          echo "build_name=whiz${{ matrix.suffix }}" >> $GITHUB_ENV
-          echo "build_path=target/${{ matrix.target }}/release" >> $GITHUB_ENV
-
       - name: Zip
         run: |
-          mv "${{ env.build_path }}/${{ env.build_name }}" .
+          mv "target/${{ matrix.target }}/release/whiz${{ matrix.suffix }}" .
 
           # best zip compression
           7z \
@@ -75,11 +69,11 @@ jobs:
           -mm=Deflate \
           -mfb=273 \
           -mpass=15 \
-          "${{ env.artifact_name }}" \
-          "${{ env.build_name }}"
+          "whiz-${{ github.ref_name }}-${{ matrix.target }}.zip" \
+          "whiz${{ matrix.suffix }}"
 
       - uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
           generateReleaseNotes: true
-          artifacts: "${{ env.artifact_name }}"
+          artifacts: "whiz-${{ github.ref_name }}-${{ matrix.target }}.zip"

@@ -25,7 +25,7 @@ use crate::config::{
     Config, Task,
 };
 
-use super::console::{Output, Register};
+use super::console::{Output, PanelStatus, RegisterPanel};
 use super::watcher::{IgnorePath, WatchGlob};
 
 #[cfg(not(test))]
@@ -277,6 +277,10 @@ impl CommandActor {
         let env = self.load_env(&cwd);
 
         self.log_debug(format!("EXEC: {} at {:?}", args, cwd));
+        self.console.do_send(PanelStatus {
+            panel_name: self.op_name.clone(),
+            status: None,
+        });
 
         let mut p = Exec::cmd("bash")
             .cwd(cwd)
@@ -371,17 +375,8 @@ impl Actor for CommandActor {
         let addr = ctx.address();
         self.self_addr = Some(addr.clone());
 
-        for pipe in &self.pipes {
-            if let OutputRedirection::Tab(name) = &pipe.redirection {
-                self.console.do_send(Register {
-                    title: name.to_owned(),
-                    addr: addr.clone(),
-                });
-            }
-        }
-
-        self.console.do_send(Register {
-            title: self.op_name.clone(),
+        self.console.do_send(RegisterPanel {
+            name: self.op_name.clone(),
             addr,
         });
 
@@ -549,13 +544,12 @@ impl Handler<StdoutTerminated> for CommandActor {
     fn handle(&mut self, msg: StdoutTerminated, _: &mut Self::Context) -> Self::Result {
         if msg.started_at == self.started_at {
             self.ensure_stopped();
-            let exit = self
-                .child
-                .exit_status()
-                .map(|c| format!("{:?}", c))
-                .unwrap_or_else(|| "?".to_string());
+            let exit = self.child.exit_status();
 
-            self.log_info(exit);
+            self.console.do_send(PanelStatus {
+                panel_name: self.op_name.clone(),
+                status: exit,
+            });
         }
     }
 }

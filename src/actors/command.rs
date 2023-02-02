@@ -317,6 +317,15 @@ impl CommandActor {
                 if let Some(task_pipe) = task_pipe {
                     match &task_pipe.redirection {
                         OutputRedirection::Tab(name) => {
+                            let name = task_pipe.regex.replace(&line, name).to_string();
+                            if let Some(addr) = &self_addr {
+                                // tabs must be created on each loop,
+                                // as their name can be dynamic
+                                console.do_send(RegisterPanel {
+                                    name: name.to_owned(),
+                                    addr: addr.clone(),
+                                });
+                            }
                             console.do_send(Output::now(name.to_owned(), line.clone(), false));
                         }
                         OutputRedirection::File(path) => {
@@ -374,15 +383,6 @@ impl Actor for CommandActor {
     fn started(&mut self, ctx: &mut Context<Self>) {
         let addr = ctx.address();
         self.self_addr = Some(addr.clone());
-
-        for pipe in &self.pipes {
-            if let OutputRedirection::Tab(name) = &pipe.redirection {
-                self.console.do_send(RegisterPanel {
-                    name: name.to_owned(),
-                    addr: addr.clone(),
-                });
-            }
-        }
 
         self.console.do_send(RegisterPanel {
             name: self.op_name.clone(),

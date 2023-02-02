@@ -98,3 +98,12 @@ pipe_test:
 
         # Content not matched by a regular expression goes to 
         # `whiz://{task_name}` by default
+
+friends_conversation:
+    command: |
+        echo "[message] Dave: hello"
+        echo "[message] Bob: bonjour"
+
+    pipe:
+        # Dynamic naming for virtual tabs generation
+        '^\[message\] (?P<name>[a-zA-Z]+):.*$': whiz://talker_${name}

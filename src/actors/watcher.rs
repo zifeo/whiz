@@ -1,11 +1,11 @@
 use actix::prelude::*;
 
 use globset::GlobSet;
-use ignore::gitignore::Gitignore;
-use ignore::Match;
+use ignore::gitignore::GitignoreBuilder;
 use notify::event::ModifyKind;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::{Path, PathBuf};
+use std::collections::HashSet;
+use std::path::PathBuf;
 
 use super::command::{CommandActor, Reload};
 
@@ -13,6 +13,8 @@ pub struct WatcherActor {
     watcher: Option<RecommendedWatcher>,
     globs: Vec<WatchGlob>,
     base_dir: PathBuf,
+    // List of file paths to ignore on the watcher
+    ignore: HashSet<PathBuf>,
 }
 
 impl WatcherActor {
@@ -21,6 +23,7 @@ impl WatcherActor {
             watcher: None,
             globs: Vec::default(),
             base_dir,
+            ignore: HashSet::default(),
         }
     }
 }
@@ -31,29 +34,31 @@ impl Actor for WatcherActor {
     fn started(&mut self, ctx: &mut Context<Self>) {
         let addr = ctx.address();
 
-        let gi = Gitignore::new(Path::new(".gitignore")).0;
+        let mut git_ignore_builder = GitignoreBuilder::new(&self.base_dir);
+        // add globs from `<project-root>/.gitignore`
+        git_ignore_builder.add(self.base_dir.join(".gitignore"));
+        // ignore `<project-root>/.git` folder
+        git_ignore_builder.add_line(None, ".git/").unwrap();
+        let git_ignore = git_ignore_builder.build();
+
         let mut watcher = recommended_watcher(move |res: Result<Event, notify::Error>| {
-            let event = res.unwrap();
+            let mut event = res.unwrap();
 
-            let paths = event
-                .paths
-                .iter()
-                .filter(|path| {
-                    !matches!(
-                        gi.matched_path_or_any_parents(path, false),
-                        Match::Ignore(_)
-                    )
+            if let Ok(git_ignore) = &git_ignore {
+                event.paths.retain(|path| {
+                    !git_ignore
+                        .matched_path_or_any_parents(path, false)
+                        .is_ignore()
                 })
-                .map(|path| path.to_path_buf())
-                .collect::<Vec<_>>();
+            };
 
-            if !paths.is_empty() {
+            if !event.paths.is_empty() {
                 match event.kind {
                     EventKind::Create(_)
                     | EventKind::Remove(_)
                     | EventKind::Modify(ModifyKind::Data(_))
                     | EventKind::Modify(ModifyKind::Name(_)) => {
-                        addr.do_send(WatchEvent(event, paths));
+                        addr.do_send(WatchEvent(event));
                     }
                     _ => {}
                 }
@@ -87,17 +92,22 @@ impl Handler<WatchGlob> for WatcherActor {
 
 #[derive(Message)]
 #[rtype(result = "()")]
-struct WatchEvent(Event, Vec<PathBuf>);
+struct WatchEvent(Event);
 
 impl Handler<WatchEvent> for WatcherActor {
     type Result = ();
 
     fn handle(&mut self, msg: WatchEvent, _: &mut Context<Self>) -> Self::Result {
-        let WatchEvent(_, paths) = msg;
+        let WatchEvent(event) = msg;
         for glob in &self.globs {
-            let paths = paths
+            let paths = event
+                .paths
                 .iter()
-                .filter(|path| glob.on.is_match(path) && !glob.off.is_match(path))
+                .filter(|path| {
+                    !self.ignore.contains(path.as_path())
+                        && glob.on.is_match(path)
+                        && !glob.off.is_match(path)
+                })
                 .collect::<Vec<_>>();
 
             if !paths.is_empty() {
@@ -109,5 +119,18 @@ impl Handler<WatchEvent> for WatcherActor {
                 glob.command.do_send(Reload::Watch(trigger))
             }
         }
+    }
+}
+
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct IgnorePath(pub PathBuf);
+
+impl Handler<IgnorePath> for WatcherActor {
+    type Result = ();
+
+    fn handle(&mut self, msg: IgnorePath, _: &mut Context<Self>) -> Self::Result {
+        let IgnorePath(path) = msg;
+        self.ignore.insert(path);
     }
 }

@@ -12,6 +12,7 @@ use path_absolutize::*;
 use path_clean::{self, PathClean};
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::{collections::HashMap, env, time::Duration};
 use std::{
@@ -19,11 +20,13 @@ use std::{
     path::PathBuf,
 };
 
-use crate::config::Config;
-use crate::config::Task;
+use crate::config::{
+    pipe::{OutputRedirection, Pipe},
+    Config, Task,
+};
 
 use super::console::{Output, PanelStatus, RegisterPanel};
-use super::watcher::WatchGlob;
+use super::watcher::{IgnorePath, WatchGlob};
 
 #[cfg(not(test))]
 mod prelude {
@@ -112,6 +115,7 @@ pub struct CommandActor {
     verbose: bool,
     started_at: DateTime<Local>,
     shared_env: HashMap<String, String>,
+    pipes: Vec<Pipe>,
 }
 
 pub fn resolve_env(
@@ -138,11 +142,13 @@ impl CommandActor {
         watcher: Addr<WatcherAct>,
         base_dir: PathBuf,
         verbose: bool,
+        pipes_map: HashMap<String, Vec<Pipe>>,
     ) -> Vec<Addr<CommandActor>> {
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
 
         for (op_name, nexts) in config.build_dag().unwrap().into_iter() {
             let op = config.ops.get(&op_name).unwrap();
+            let task_pipes = pipes_map.get(&op_name).unwrap_or(&Vec::new()).clone();
 
             let actor = CommandActor::new(
                 op_name.clone(),
@@ -156,6 +162,7 @@ impl CommandActor {
                 base_dir.clone(),
                 verbose,
                 config.env.clone(),
+                task_pipes,
             )
             .start();
 
@@ -182,6 +189,7 @@ impl CommandActor {
         base_dir: PathBuf,
         verbose: bool,
         shared_env: HashMap<String, String>,
+        pipes: Vec<Pipe>,
     ) -> Self {
         Self {
             op_name,
@@ -197,12 +205,14 @@ impl CommandActor {
             verbose,
             started_at: Local::now(),
             shared_env,
+            pipes,
         }
     }
 
     fn log_info(&self, log: String) {
-        self.console
-            .do_send(Output::now(self.op_name.clone(), log, true));
+        let job_name = self.op_name.clone();
+
+        self.console.do_send(Output::now(job_name, log, true));
     }
 
     fn log_debug(&self, log: String) {
@@ -288,11 +298,72 @@ impl CommandActor {
         let op_name = self.op_name.clone();
         let self_addr = self.self_addr.clone();
         let started_at = Local::now();
+        let operator = self.operator.clone();
+        let base_dir = self.base_dir.clone();
+        let watcher = self.watcher.clone();
+        let task_pipes = self.pipes.clone();
 
         let fut = async move {
             for line in reader.lines() {
-                console.do_send(Output::now(op_name.clone(), line.unwrap(), false));
+                let mut line = line.unwrap();
+                let mut base_dir = base_dir.clone();
+
+                if let Some(workdir) = &operator.workdir {
+                    base_dir = base_dir.join(workdir);
+                }
+
+                let task_pipe = task_pipes.iter().find(|pipe| pipe.regex.is_match(&line));
+
+                if let Some(task_pipe) = task_pipe {
+                    match &task_pipe.redirection {
+                        OutputRedirection::Tab(name) => {
+                            let name = task_pipe.regex.replace(&line, name).to_string();
+                            if let Some(addr) = &self_addr {
+                                // tabs must be created on each loop,
+                                // as their name can be dynamic
+                                console.do_send(RegisterPanel {
+                                    name: name.to_owned(),
+                                    addr: addr.clone(),
+                                });
+                            }
+                            console.do_send(Output::now(name.to_owned(), line.clone(), false));
+                        }
+                        OutputRedirection::File(path) => {
+                            let path = task_pipe.regex.replace(&line, path);
+                            let mut path = Path::new(path.as_ref()).to_path_buf();
+
+                            // prepend base dir if the log file path is relative
+                            if !path.starts_with("/") {
+                                path = base_dir.join(path);
+                            }
+
+                            let log_folder = Path::new(&path).parent().unwrap();
+                            fs::create_dir_all(log_folder).unwrap();
+
+                            // file must be created and opened on each loop
+                            // as the path is dynamic, therefore there
+                            // is no a way to optimize it to create it
+                            // only once
+                            let mut file = fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&path)
+                                .unwrap();
+
+                            // exlude file path from watcher before writing to it
+                            // to avoid infinite loops
+                            watcher.do_send(IgnorePath(path));
+
+                            // append new line since strings from the buffer reader don't include it
+                            line.push('\n');
+                            file.write_all(line.clone().as_bytes()).unwrap();
+                        }
+                    }
+                } else {
+                    console.do_send(Output::now(op_name.clone(), line.clone(), false));
+                }
             }
+
             if let Some(addr) = self_addr {
                 addr.do_send(StdoutTerminated { started_at });
             }

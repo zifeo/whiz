@@ -59,3 +59,51 @@ env_test:
         hello: "bonjour"
     env_file:
         - ../.env.example
+
+pipe_test:
+    # each log file created from output redirection will
+    # be ignored from the watcher to avoid infinite loops
+    # when writting to them
+    watch: "*"
+    command: |
+        echo "[app] GET / 200 - Ok"
+        echo "[ERROR] POST /home 400 - Not Found"
+        echo "[TRACE] Authentication failed for API key '1234'"
+        echo "[PRIVATE] message"
+        echo "[server] GET /movies - requester: http://cinema.com"
+        echo "animal:cat says meow"
+        echo "Au revoir!"
+    pipe:
+        # Create a new tab for messages containing the text '[app]'
+        '^\[app\]': whiz://virtual_views
+
+        # Create a new tab for messages containing the text 'ERROR'
+        # or `error`
+        "^.*(ERROR|error).*$": whiz://virtual_views_error
+
+        # Silence messages containing "TRACE" word
+        "^.*TRACE.*$": /dev/null
+
+        # Silence messages containing "SERCRET" word
+        # with implicit scheme `file`
+        "^.*PRIVATE.*$": file:///dev/null
+
+        # Save matched content as a log file
+        # using capture groups
+        '.*https?://([a-zA-Z0-9_\-\.]+).*$': ./logs/$1/requests.log
+
+        # Save matched content as a log file
+        # using named capture groups
+        'animal:(?P<name>[a-zA-Z0-9_]+).*$': ./logs/animals/${name}.log
+
+        # Content not matched by a regular expression goes to 
+        # `whiz://{task_name}` by default
+
+friends_conversation:
+    command: |
+        echo "[message] Dave: hello"
+        echo "[message] Bob: bonjour"
+
+    pipe:
+        # Dynamic naming for virtual tabs generation
+        '^\[message\] (?P<name>[a-zA-Z]+):.*$': whiz://talker_${name}

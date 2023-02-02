@@ -9,6 +9,10 @@ use serde::Deserialize;
 
 use std::fs::File;
 
+pub mod pipe;
+
+use pipe::Pipe;
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Lift<T> {
@@ -52,6 +56,28 @@ pub struct Task {
 
     #[serde(default)]
     pub depends_on: Lift<String>,
+
+    /// Map of output redirections with the format:
+    /// `regular expressiong` -> `pipe`
+    ///
+    /// Where the content matched by the regular expression
+    /// can be redirected to:
+    ///
+    /// - whiz: creating a new tab for the incoming messages.
+    /// Format: `whiz://{tab_name}`
+    ///
+    /// - /dev/null: silence the matched content.
+    /// Format: `/dev/null` or `file:///dev/null`
+    ///
+    /// - file: saving the matched content in a log file.
+    /// Format: `path` or `file:///{path}`
+    ///
+    /// # NOTE
+    ///
+    /// Any other output not matched by a regular expression goes to
+    /// `whiz://{task_name}` as default.
+    #[serde(default)]
+    pub pipe: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -221,6 +247,23 @@ impl Config {
     /// Returns the list of all the jobs defined in the config file.
     pub fn get_jobs(&self) -> Vec<&String> {
         self.ops.iter().map(|(job_name, _)| job_name).collect()
+    }
+
+    /// Parses the pipes of each task to make sure they are valid and returns
+    /// a [`HashMap`] where the keys are the task names and the values
+    /// are the parsed pipes.
+    pub fn get_pipes_map(&self) -> Result<HashMap<String, Vec<Pipe>>> {
+        let mut pipes = HashMap::new();
+
+        for (task_name, task) in &self.ops {
+            for pipe_config in &task.pipe {
+                let task_pipes: &mut Vec<Pipe> = pipes.entry(task_name.to_owned()).or_default();
+                let pipe = Pipe::from(pipe_config)?;
+                task_pipes.push(pipe);
+            }
+        }
+
+        Ok(pipes)
     }
 
     /// Remove dependencies that are child of another dependency for

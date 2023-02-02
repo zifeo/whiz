@@ -359,6 +359,11 @@ fn wrapped_lines(message: &String, width: u16) -> u16 {
     textwrap::wrap(str::from_utf8(&clean).unwrap(), width as usize).len() as u16
 }
 
+/// Formats a message with a timestamp in `"{timestamp}  {message}"`.
+fn format_message(message: &str, timestamp: &DateTime<Local>) -> String {
+    format!("{}  {}", timestamp.format("%H:%M:%S%.3f"), message)
+}
+
 impl Handler<Output> for ConsoleActor {
     type Result = ();
 
@@ -370,7 +375,7 @@ impl Handler<Output> for ConsoleActor {
         };
 
         let message = match self.timestamp {
-            true => format!("{}  {}", msg.timestamp.format("%H:%M:%S%.3f"), msg.message),
+            true => format_message(&msg.message, &msg.timestamp),
             false => msg.message,
         };
         let width = self.terminal.get_frame().size().width;
@@ -392,6 +397,9 @@ impl Handler<RegisterPanel> for ConsoleActor {
 
     fn handle(&mut self, msg: RegisterPanel, _: &mut Context<Self>) -> Self::Result {
         self.panels.insert(msg.name.clone(), Panel::new(msg.addr));
+        if !self.order.contains(&msg.name) {
+            self.order.push(msg.name);
+        }
         self.draw();
     }
 }

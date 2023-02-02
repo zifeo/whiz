@@ -62,6 +62,14 @@ fn main() -> Result<()> {
         }
     };
 
+    let pipes_map = match config.get_pipes_map() {
+        Ok(pipes_map) => pipes_map,
+        Err(err) => {
+            println!("config error: {}", err);
+            process::exit(2);
+        }
+    };
+
     if let Err(err) = config.filter_jobs(&args.run) {
         println!("argument error: {}", err);
         process::exit(3);
@@ -80,7 +88,14 @@ fn main() -> Result<()> {
         let console =
             ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned()), args.timestamp).start();
         let watcher = WatcherActor::new(base_dir.clone()).start();
-        CommandActor::from_config(&config, console, watcher, base_dir.clone(), args.verbose);
+        CommandActor::from_config(
+            &config,
+            console,
+            watcher,
+            base_dir.clone(),
+            args.verbose,
+            pipes_map,
+        );
     };
 
     Arbiter::current().spawn(exec);

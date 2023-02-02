@@ -1,16 +1,70 @@
+name: Release
+
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
 
 jobs:
   check-bump:
     runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check version
+        run: |
+          # whiz version message example: whiz v0.1.0
+          VERSION=$(cargo run -- --version | cut --delimiter=' ' --fields=2)
+          if [[ "${{ github.ref_name }}" != "$VERSION" ]]; then
+            echo "Tag does not match code version, stopping."
+            exit -1
+          fi
+          echo "Releasing $VERSION"
+
+  build:
+    needs:
+      - check-bump
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: ""
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: ".exe"
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: katyo/publish-crates@v1
         with:
-          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          ignore-unpublished-changes: true
+          key: ${{ runner.os }}
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: "--locked --release --target ${{ matrix.target }}"
+
+      - name: Compress
+        run: |
+          mv "target/${{ matrix.target }}/release/whiz${{ matrix.suffix }}" .
+
+          tar czvf \
+            "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" \
+            "whiz${{ matrix.suffix }}"
+
+      - name: Upload
+        uses: svenstaro/upload-release-action@v2
+        with:
+          tag: ${{ github.ref }}
+          file: "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
+          asset_name: "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
+          overwrite: false

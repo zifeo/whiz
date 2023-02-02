@@ -102,7 +102,7 @@ fn config_search_recursive() {
     println!(" Working directory set to {}", new_cwd);
 
     let config_name = "whiz.yaml";
-    let expected_if_exist = Path::new(&new_cwd).join(&config_name).display().to_string();
+    let expected_if_exist = Path::new(&new_cwd).join(config_name).display().to_string();
 
     let config_got = recurse_config_file(config_name);
     assert!(config_got.is_ok());

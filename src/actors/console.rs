@@ -397,6 +397,9 @@ impl Handler<RegisterPanel> for ConsoleActor {
 
     fn handle(&mut self, msg: RegisterPanel, _: &mut Context<Self>) -> Self::Result {
         self.panels.insert(msg.name.clone(), Panel::new(msg.addr));
+        if !self.order.contains(&msg.name) {
+            self.order.push(msg.name);
+        }
         self.draw();
     }
 }

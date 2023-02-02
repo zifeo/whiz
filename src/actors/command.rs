@@ -375,6 +375,15 @@ impl Actor for CommandActor {
         let addr = ctx.address();
         self.self_addr = Some(addr.clone());
 
+        for pipe in &self.pipes {
+            if let OutputRedirection::Tab(name) = &pipe.redirection {
+                self.console.do_send(RegisterPanel {
+                    name: name.to_owned(),
+                    addr: addr.clone(),
+                });
+            }
+        }
+
         self.console.do_send(RegisterPanel {
             name: self.op_name.clone(),
             addr,

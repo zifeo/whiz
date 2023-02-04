@@ -24,9 +24,26 @@ jobs:
             echo "Tag does not match code version, stopping."
             exit -1
           fi
-          echo "Releasing $VERSION"
+          echo "Releasing v$VERSION"
 
-  build:
+  crates:
+    needs:
+      - check-bump
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}
+      - name: Publish
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: publish
+          args: "--locked"
+
+  binaries:
     needs:
       - check-bump
     runs-on: ${{ matrix.os }}
@@ -57,9 +74,7 @@ jobs:
       - name: Compress
         run: |
           mv "target/${{ matrix.target }}/release/whiz${{ matrix.suffix }}" .
-          tar czvf \
-            "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" \
-            "whiz${{ matrix.suffix }}"
+          tar czvf "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" "whiz${{ matrix.suffix }}"
       - name: Upload
         uses: svenstaro/upload-release-action@v2
         with:

@@ -318,7 +318,7 @@ impl CommandActor {
                     match &task_pipe.redirection {
                         OutputRedirection::Tab(name) => {
                             let mut tab_name = "".to_string();
-                            for capture in task_pipe.regex.captures_iter(&line) {
+                            if let Some(capture) = task_pipe.regex.captures(&line) {
                                 capture.expand(&name.clone(), &mut tab_name);
                             }
                             if let Some(addr) = &self_addr {

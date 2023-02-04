@@ -13,11 +13,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}
       - name: Check version
         run: |
           # whiz version message example: whiz v0.1.0
-          VERSION=$(cargo run -- --version | cut --delimiter=' ' --fields=2)
-          if [[ "${{ github.ref_name }}" != "$VERSION" ]]; then
+          VERSION=$(cargo run -- --version | cut -d' ' -f2)
+          if [[ "${{ github.ref_name }}" != "v$VERSION" ]]; then
             echo "Tag does not match code version, stopping."
             exit -1
           fi
@@ -45,22 +48,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ runner.os }}
-
       - name: Build
         uses: actions-rs/cargo@v1
         with:
           use-cross: false
           command: build
           args: "--locked --release --target ${{ matrix.target }}"
-
       - name: Compress
         run: |
           mv "target/${{ matrix.target }}/release/whiz${{ matrix.suffix }}" .
-
           tar czvf \
             "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" \
             "whiz${{ matrix.suffix }}"
-
       - name: Upload
         uses: svenstaro/upload-release-action@v2
         with:

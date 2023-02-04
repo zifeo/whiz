@@ -1,10 +1,12 @@
 # Whiz
 
-Modern [DAG](https://en.wikipedia.org/wiki/Directed_acyclic_graph)/tasks runner.
+Modern DAG/tasks runner for multi-platform monorepos.
 
 ## Getting started
 
 ```
+eget zifeo/whiz --to $HOME/.local/bin
+cargo install whiz --locked
 cargo install --git https://github.com/zifeo/whiz --locked
 ```
 
@@ -32,7 +34,7 @@ whiz --arg arg1 --arg arg2
 
 ## Key bindings
 
-### navigation
+### Navigation
 
 | Keys         | Motion                              |
 | ------------ | ----------------------------------- |
@@ -47,7 +49,7 @@ whiz --arg arg1 --arg arg2
 | 0            | go to last tab                      |
 | 1-9          | go to the tab at the given position |
 
-### actions
+### Actions
 
 | Keys       | Motion                           |
 | ---------- | -------------------------------- |

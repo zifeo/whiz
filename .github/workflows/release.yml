@@ -36,12 +36,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ runner.os }}
-      - name: Publish
-        uses: actions-rs/cargo@v1
+      - uses: katyo/publish-crates@v1
         with:
-          use-cross: false
-          command: publish
-          args: "--locked"
+          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   binaries:
     needs:

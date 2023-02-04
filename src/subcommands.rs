@@ -22,7 +22,6 @@ impl Command {
 #[derive(Subcommand, Debug)]
 pub enum SelfCommand {
     /// Upgrade to the latest version of whiz.
-    #[clap(subcommand)]
     Upgrade,
 }
 

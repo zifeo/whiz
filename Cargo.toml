@@ -1,6 +1,6 @@
 [package]
 name = "whiz"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Modern DAG/tasks runner for multi-platform monorepos."
 license = "MPL-2.0"

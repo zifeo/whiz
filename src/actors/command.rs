@@ -317,16 +317,19 @@ impl CommandActor {
                 if let Some(task_pipe) = task_pipe {
                     match &task_pipe.redirection {
                         OutputRedirection::Tab(name) => {
-                            let name = task_pipe.regex.replace(&line, name).to_string();
+                            let mut tab_name = "".to_string();
+                            for capture in task_pipe.regex.captures_iter(&line) {
+                                capture.expand(&name.clone(), &mut tab_name);
+                            }
                             if let Some(addr) = &self_addr {
                                 // tabs must be created on each loop,
                                 // as their name can be dynamic
                                 console.do_send(RegisterPanel {
-                                    name: name.to_owned(),
+                                    name: tab_name.to_owned(),
                                     addr: addr.clone(),
                                 });
                             }
-                            console.do_send(Output::now(name.to_owned(), line.clone(), false));
+                            console.do_send(Output::now(tab_name.to_owned(), line.clone(), false));
                         }
                         OutputRedirection::File(path) => {
                             let path = task_pipe.regex.replace(&line, path);

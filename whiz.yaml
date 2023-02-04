@@ -67,6 +67,7 @@ pipe_test:
     watch: "*"
     command: |
         echo "[app] GET / 200 - Ok"
+        echo "[app] GET / 204 - No Content"
         echo "[ERROR] POST /home 400 - Not Found"
         echo "[TRACE] Authentication failed for API key '1234'"
         echo "[PRIVATE] message"
@@ -94,9 +95,9 @@ pipe_test:
 
         # Save matched content as a log file
         # using named capture groups
-        'animal:(?P<name>[a-zA-Z0-9_]+).*$': ./logs/animals/${name}.log
+        "animal:(?P<name>[a-zA-Z0-9_]+).*$": ./logs/animals/${name}.log
 
-        # Content not matched by a regular expression goes to 
+        # Content not matched by a regular expression goes to
         # `whiz://{task_name}` by default
 
 friends_conversation:

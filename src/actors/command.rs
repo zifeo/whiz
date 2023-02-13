@@ -282,9 +282,14 @@ impl CommandActor {
             status: None,
         });
 
-        let mut p = Exec::cmd("bash")
+        #[cfg(target_os = "windows")]
+        let exec = Exec::cmd("cmd").args(&["/c", args]);
+
+        #[cfg(not(target_os = "windows"))]
+        let exec = Exec::cmd("bash").args(&["-c", args]);
+
+        let mut p = exec
             .cwd(cwd)
-            .args(&["-c", args])
             .env_extend(&env.into_iter().collect::<Vec<(String, String)>>())
             .stdout(Redirection::Pipe)
             .stderr(Redirection::Merge)

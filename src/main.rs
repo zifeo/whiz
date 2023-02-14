@@ -38,6 +38,14 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    #[cfg(target_os = "windows")]
+    std::env::set_var(
+        "PWD",
+        std::env::current_dir()
+            .expect("could not read current directory")
+            .to_str()
+            .unwrap(),
+    );
 
     if let Some(command) = &args.command {
         command.run();

@@ -50,8 +50,11 @@ jobs:
           - os: macos-latest
             target: x86_64-apple-darwin
             suffix: ""
-          - os: ubuntu-latest
+          - os: ubuntu-20.04 # libc 2.31 compatibility
             target: x86_64-unknown-linux-gnu
+            suffix: ""
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
             suffix: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -79,3 +82,28 @@ jobs:
           file: "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
           asset_name: "whiz-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
           overwrite: false
+
+  bump:
+    needs:
+      - crates
+      - binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}
+      - name: Bump version
+        id: bump
+        run: |
+          cargo install cargo-edit
+          cargo set-version --bump alpha
+          echo "version=$(cargo metadata --format-version 1 --no-deps | jq -r .packages[0].version)" >> $GITHUB_OUTPUT
+      - uses: peter-evans/create-pull-request@v4
+        with:
+          branch: bump-${{ steps.bump.outputs.version }}
+          delete-branch: true
+          commit-message: "chore: prepare release ${{ steps.bump.outputs.version }}"
+          title: "chore: prepare release ${{ steps.bump.outputs.version }}"
+          base: "${{ github.head_ref }}"

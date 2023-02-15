@@ -56,7 +56,7 @@ jobs:
           - os: macos-latest
             target: x86_64-apple-darwin
             suffix: ""
-          - os: ubuntu-20.04 # libc 2.31 compatibility
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             suffix: ""
           - os: ubuntu-latest

@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 use serde::Deserialize;
 
 use std::fs::File;
+use std::io::Read;
 
 pub mod pipe;
 
@@ -92,17 +93,22 @@ pub struct Config {
 pub type Dag = IndexMap<String, Vec<String>>;
 
 impl FromStr for Config {
-    type Err = serde_yaml::Error;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let config: Config = serde_yaml::from_str(s)?;
-        Ok(config)
+        Self::from_reader(s.as_bytes())
     }
 }
 
 impl Config {
     pub fn from_file(file: &File) -> Result<Config> {
-        let mut config: Config = serde_yaml::from_reader(file)?;
+        Self::from_reader(file)
+    }
+
+    fn from_reader(reader: impl Read) -> Result<Config> {
+        let mut config: serde_yaml::Value = serde_yaml::from_reader(reader)?;
+        config.apply_merge()?;
+        let mut config: Config = serde_yaml::from_value(config)?;
 
         // make sure config file is a `Directed Acyclic Graph`
         config.build_dag()?;
@@ -327,7 +333,7 @@ mod tests {
                 depends_on:
                     - b
 
-            d:
+            d: &alias
                 command: echo c
                 depends_on:
                     - a
@@ -346,6 +352,10 @@ mod tests {
 
             not_child_dependency:
                 command: echo hello world
+
+            with_alias:
+                <<: *alias
+                command: echo with_alias
         "#;
 
         #[test]
@@ -371,8 +381,7 @@ mod tests {
 
         #[test]
         fn simplifies_dependencies() {
-            let mut config: Config = CONFIG_EXAMPLE.parse().unwrap();
-            config.simplify_dependencies();
+            let config: Config = CONFIG_EXAMPLE.parse().unwrap();
 
             let job_d = config.ops.get("d").unwrap();
 
@@ -380,6 +389,19 @@ mod tests {
             let expected_dependencies = vec!["c", "z"];
 
             assert_array_not_strict!(dependencies_d, expected_dependencies);
+        }
+
+        #[test]
+        fn resolves_alias() {
+            let config: Config = CONFIG_EXAMPLE.parse().unwrap();
+
+            assert_array_not_strict!(
+                config.get_dependencies("d"),
+                config.get_dependencies("with_alias")
+            );
+
+            let job_with_alias = config.ops.get("with_alias").unwrap();
+            assert_eq!(&job_with_alias.command, "echo with_alias");
         }
     }
 

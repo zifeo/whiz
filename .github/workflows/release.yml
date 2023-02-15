@@ -27,7 +27,7 @@ jobs:
           echo "Releasing v$VERSION"
       - uses: ncipollo/release-action@v1
         with:
-          tag: ${{ github.ref }}
+          tag: ${{ github.ref_name }}
           makeLatest: false
           prerelease: true
           generateReleaseNotes: true
@@ -45,6 +45,7 @@ jobs:
       - uses: katyo/publish-crates@v1
         with:
           registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          ignore-unpublished-changes: true
 
   binaries:
     needs:
@@ -68,6 +69,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ runner.os }}

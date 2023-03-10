@@ -32,9 +32,27 @@ impl<T: std::clone::Clone> Lift<T> {
     }
 }
 
+impl<T: std::clone::Clone> From<Vec<T>> for Lift<T> {
+    fn from(value: Vec<T>) -> Self {
+        match value.len() {
+            0 => Self::Empty,
+            1 => Self::One(value[0].clone()),
+            _ => Self::More(value)
+        }
+    }
+}
+
 impl<T> Default for Lift<T> {
     fn default() -> Self {
         Lift::Empty
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct BoolTrueByDefault(pub bool);
+impl Default for BoolTrueByDefault {
+    fn default() -> Self {
+        Self(true)
     }
 }
 
@@ -79,6 +97,12 @@ pub struct Task {
     /// `whiz://{task_name}` as default.
     #[serde(default)]
     pub pipe: HashMap<String, String>,
+
+    #[serde(default)]
+    pub arguments: Lift<String>,
+
+    #[serde(default)]
+    pub autostart: BoolTrueByDefault
 }
 
 #[derive(Deserialize, Debug)]

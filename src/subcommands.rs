@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use clap::Subcommand;
 
 pub mod upgrade;
@@ -8,12 +9,16 @@ pub enum Command {
     /// Set of subcommands for whiz itself.
     #[clap(subcommand)]
     _Self(SelfCommand),
+    /// For running a single job with arguments
+    #[command(external_subcommand)]
+    External(Vec<OsString>),
 }
 
 impl Command {
     pub fn run(&self) {
         match self {
             Self::_Self(self_command) => self_command.run(),
+            _ => {}
         }
     }
 }

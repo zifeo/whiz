@@ -166,7 +166,7 @@ impl CommandActor {
             )
             .start();
 
-            if op.depends_on.resolve().is_empty() {
+            if op.depends_on.resolve().is_empty() && op.autostart.0 {
                 actor.do_send(Reload::Start)
             }
             commands.insert(op_name, actor);
@@ -283,10 +283,18 @@ impl CommandActor {
         });
 
         #[cfg(target_os = "windows")]
-        let exec = Exec::cmd("cmd").args(&["/c", args]);
+        let exec = {
+            let mut shell_arguments = vec!["/c".to_owned(), args.clone()];
+            shell_arguments.extend(self.operator.arguments.resolve());
+            Exec::cmd("cmd").args(&["/c", shell_arguments]);
+        };
 
         #[cfg(not(target_os = "windows"))]
-        let exec = Exec::cmd("bash").args(&["-c", args]);
+        let exec = {
+            let mut shell_arguments = vec!["-c".to_owned(), args.clone()];
+            shell_arguments.extend(self.operator.arguments.resolve());
+            Exec::cmd("bash").args(&shell_arguments)
+        };
 
         let mut p = exec
             .cwd(cwd)

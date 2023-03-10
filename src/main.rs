@@ -1,7 +1,7 @@
 use actix::prelude::*;
 use whiz::{
     actors::{command::CommandActor, console::ConsoleActor, watcher::WatcherActor},
-    config::Config,
+    config::{Config, Lift},
     subcommands::Command,
     utils::recurse_config_file,
 };
@@ -47,11 +47,6 @@ fn main() -> Result<()> {
             .unwrap(),
     );
 
-    if let Some(command) = &args.command {
-        command.run();
-        process::exit(0);
-    };
-
     let (config_file, config_path) = {
         match recurse_config_file(&args.file) {
             Ok(result) => result,
@@ -70,6 +65,25 @@ fn main() -> Result<()> {
         }
     };
 
+    let mut single_task = None;
+    if let Some(command) = &args.command {
+        match command {
+            Command::External(arguments) => {
+                if args.run.is_empty() {
+                    let task_name = arguments[0].clone().into_string().unwrap();
+                    if let Some(op) = config.ops.get_mut(&task_name) {
+                        let task_arguments: Vec<_> = arguments[1..]
+                            .iter().cloned()
+                            .map(|s| s.into_string().unwrap()).collect();
+                        op.arguments = Lift::from(task_arguments);
+                    }
+                    single_task = Some(task_name);
+                }
+            },
+            _ => {}
+        }
+    };
+
     let pipes_map = match config.get_pipes_map() {
         Ok(pipes_map) => pipes_map,
         Err(err) => {
@@ -78,7 +92,12 @@ fn main() -> Result<()> {
         }
     };
 
-    if let Err(err) = config.filter_jobs(&args.run) {
+    let result = if let Some(single_task) = single_task {
+        config.filter_jobs(&vec![single_task])
+    } else {
+        config.filter_jobs(&args.run)
+    };
+    if let Err(err) = result {
         println!("argument error: {}", err);
         process::exit(3);
     };

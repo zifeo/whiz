@@ -80,7 +80,10 @@ fn main() -> Result<()> {
                     single_task = Some(task_name);
                 }
             },
-            _ => {}
+            Command::_Self(_) => {
+                command.run();
+                process::exit(0);
+            }
         }
     };
 

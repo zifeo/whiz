@@ -286,7 +286,7 @@ impl CommandActor {
         let exec = {
             let mut shell_arguments = vec!["/c".to_owned(), args.clone()];
             shell_arguments.extend(self.operator.arguments.resolve());
-            Exec::cmd("cmd").args(&["/c", shell_arguments]);
+            Exec::cmd("cmd").args(&shell_arguments);
         };
 
         #[cfg(not(target_os = "windows"))]

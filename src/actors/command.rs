@@ -166,7 +166,7 @@ impl CommandActor {
             )
             .start();
 
-            if op.depends_on.resolve().is_empty() && op.autostart.0 {
+            if op.depends_on.resolve().is_empty() && op.autostart {
                 actor.do_send(Reload::Start)
             }
             commands.insert(op_name, actor);

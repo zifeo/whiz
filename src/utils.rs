@@ -32,3 +32,8 @@ pub fn recurse_config_file(config_name: &str) -> Result<(File, PathBuf), anyhow:
 
     Ok((config_file, path))
 }
+
+#[inline]
+pub fn default_to_true() -> bool {
+    true
+}

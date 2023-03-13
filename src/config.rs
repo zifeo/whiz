@@ -6,6 +6,7 @@ use std::{
 use anyhow::{anyhow, bail, Result};
 use indexmap::IndexMap;
 use serde::Deserialize;
+use crate::utils::default_to_true;
 
 use std::fs::File;
 use std::io::Read;
@@ -45,14 +46,6 @@ impl<T: std::clone::Clone> From<Vec<T>> for Lift<T> {
 impl<T> Default for Lift<T> {
     fn default() -> Self {
         Lift::Empty
-    }
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct BoolTrueByDefault(pub bool);
-impl Default for BoolTrueByDefault {
-    fn default() -> Self {
-        Self(true)
     }
 }
 
@@ -101,8 +94,8 @@ pub struct Task {
     #[serde(default)]
     pub arguments: Lift<String>,
 
-    #[serde(default)]
-    pub autostart: BoolTrueByDefault
+    #[serde(default = "default_to_true")]
+    pub autostart: bool
 }
 
 #[derive(Deserialize, Debug)]

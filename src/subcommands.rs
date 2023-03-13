@@ -11,7 +11,7 @@ pub enum Command {
     _Self(SelfCommand),
     /// For running a single job with arguments
     #[command(external_subcommand)]
-    External(Vec<OsString>),
+    External(Vec<String>),
 }
 
 impl Command {

@@ -70,11 +70,11 @@ fn main() -> Result<()> {
         match command {
             Command::External(arguments) => {
                 if args.run.is_empty() {
-                    let task_name = arguments[0].clone().into_string().unwrap();
+                    let task_name = arguments[0].clone();
                     if let Some(op) = config.ops.get_mut(&task_name) {
                         let task_arguments: Vec<_> = arguments[1..]
                             .iter().cloned()
-                            .map(|s| s.into_string().unwrap()).collect();
+                            .collect();
                         op.arguments = Lift::from(task_arguments);
                     }
                     single_task = Some(task_name);

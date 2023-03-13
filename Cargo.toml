@@ -9,7 +9,7 @@ license = "MPL-2.0"
 actix = "0.13.0"
 ansi-to-tui = "2.0.0"
 anyhow = "1.0.69"
-chrono = "0.4.23"
+chrono = "0.4.24"
 clap = { version = "4.1.8", features = ["derive"] }
 crossterm = "0.26.1"
 dotenv-parser = "0.1.3"

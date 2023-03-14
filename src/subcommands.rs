@@ -1,4 +1,3 @@
-use std::ffi::OsString;
 use clap::Subcommand;
 
 pub mod upgrade;

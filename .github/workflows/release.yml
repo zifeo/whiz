@@ -18,7 +18,6 @@ jobs:
           key: ${{ runner.os }}
       - name: Check version
         run: |
-          # whiz version message example: whiz v0.1.0
           VERSION=$(cargo run -- --version | cut -d' ' -f2)
           if [[ "${{ github.ref_name }}" != "v$VERSION" ]]; then
             echo "Tag does not match code version, stopping."

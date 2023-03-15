@@ -3,7 +3,7 @@ use actix::prelude::*;
 
 use anyhow::Result;
 use chrono::{DateTime, Local};
-use regex::Regex;
+use lade_sdk::resolve;
 use subprocess::{Exec, ExitStatus, Popen, Redirection};
 
 use dotenv_parser::parse_dotenv;
@@ -118,23 +118,6 @@ pub struct CommandActor {
     pipes: Vec<Pipe>,
 }
 
-pub fn resolve_env(
-    kvs: &HashMap<String, String>,
-    vars: &HashMap<String, String>,
-) -> Result<HashMap<String, String>> {
-    let re = Regex::new(r"(\$\{?(\w+)\}?)")?;
-    let res = kvs
-        .iter()
-        .map(|(key, value)| {
-            let hydration = re.captures_iter(value).fold(value.clone(), |agg, c| {
-                agg.replace(&c[1], vars.get(&c[2]).unwrap_or(&"".to_string()))
-            });
-            (key.clone(), hydration)
-        })
-        .collect();
-    Ok(res)
-}
-
 impl CommandActor {
     pub fn from_config(
         config: &Config,
@@ -172,11 +155,7 @@ impl CommandActor {
             commands.insert(op_name, actor);
         }
 
-        commands
-            .values()
-            .into_iter()
-            .map(|i| i.to_owned())
-            .collect::<Vec<_>>()
+        commands.values().map(|i| i.to_owned()).collect::<Vec<_>>()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -250,9 +229,9 @@ impl CommandActor {
         }
     }
 
-    fn load_env(&self, cwd: &Path) -> Vec<(String, String)> {
+    fn load_env(&self, cwd: &Path) -> Result<Vec<(String, String)>> {
         let mut env = HashMap::from_iter(env::vars());
-        env.extend(resolve_env(&self.shared_env, &env).unwrap());
+        env.extend(resolve(&self.shared_env, &env)?);
         for env_file in self.operator.env_file.resolve() {
             let path = cwd.join(env_file.clone());
             let file = fs::read_to_string(path.clone())
@@ -262,10 +241,10 @@ impl CommandActor {
                 .into_iter()
                 .map(|(k, v)| (k, v.replace("\\n", "\n")));
 
-            env.extend(resolve_env(&values.collect(), &env).unwrap());
+            env.extend(resolve(&values.collect(), &env)?);
         }
-        env.extend(resolve_env(&self.operator.env.clone(), &env).unwrap());
-        env.into_iter().collect()
+        env.extend(resolve(&self.operator.env.clone(), &env)?);
+        Ok(env.into_iter().collect())
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -274,7 +253,7 @@ impl CommandActor {
             Some(path) => self.base_dir.join(path),
             None => self.base_dir.clone(),
         };
-        let env = self.load_env(&cwd);
+        let env = self.load_env(&cwd)?;
 
         self.log_debug(format!("EXEC: {} at {:?}", args, cwd));
         self.console.do_send(PanelStatus {

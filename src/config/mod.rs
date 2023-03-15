@@ -14,11 +14,12 @@ pub mod pipe;
 
 use pipe::Pipe;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Default)]
 #[serde(untagged)]
 pub enum Lift<T> {
     More(Vec<T>),
     One(T),
+    #[default]
     Empty,
 }
 
@@ -29,12 +30,6 @@ impl<T: std::clone::Clone> Lift<T> {
             Lift::One(v) => vec![v.clone()],
             Lift::Empty => vec![],
         }
-    }
-}
-
-impl<T> Default for Lift<T> {
-    fn default() -> Self {
-        Lift::Empty
     }
 }
 

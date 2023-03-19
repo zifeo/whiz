@@ -1,6 +1,17 @@
 # Whiz
 
-Modern DAG/tasks runner for multi-platform monorepos.
+![Crates.io](https://img.shields.io/crates/v/whiz)
+
+> Whiz is part of the
+> [Metatype ecosystem](https://github.com/metatypedev/metatype). Consider
+> checking out how this component integrates with the whole ecosystem and browse
+> the
+> [documentation](https://metatype.dev?utm_source=github&utm_medium=readme&utm_campaign=whiz)
+> to see more examples.
+
+Whiz (/wɪz/) is a modern DAG/tasks runner for multi-platform monorepos.
+
+![Demo](./demo.gif)
 
 ## Getting started
 

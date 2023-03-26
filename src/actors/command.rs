@@ -57,34 +57,23 @@ pub enum Child {
 
 impl Child {
     fn poll(&mut self, kill: bool) -> Result<bool> {
-        if let Child::Process(_) = &self {
-            if let Child::Process(mut p) = std::mem::replace(self, Child::NotStarted) {
-                if kill && p.poll().is_none() {
+        if let Child::Process(p) = self {
+            match p.poll() {
+                Some(exit) => {
+                    *self = Self::Exited(exit);
+                    Ok(true)
+                }
+                None if kill => {
                     p.terminate()?;
-                    p.wait_timeout(Duration::from_millis(10))?;
-
-                    if p.poll().is_none() {
+                    if p.wait_timeout(Duration::from_millis(50))?.is_none() {
                         p.kill()?;
                         p.wait()?;
                     }
-                }
 
-                match p.poll() {
-                    Some(exit) => {
-                        *self = Self::Exited(exit);
-                        Ok(true)
-                    }
-                    None if kill => {
-                        *self = Self::Killed;
-                        Ok(true)
-                    }
-                    None => {
-                        *self = Child::Process(p);
-                        Ok(false)
-                    }
+                    *self = Self::Killed;
+                    Ok(true)
                 }
-            } else {
-                panic!("cannot swap");
+                None => Ok(false),
             }
         } else {
             Ok(false)
@@ -501,7 +490,6 @@ impl Handler<GetStatus> for CommandActor {
 
     fn handle(&mut self, _: GetStatus, _: &mut Self::Context) -> Self::Result {
         self.child.poll(false).unwrap();
-        println!("{:?}", self.child.exit_status());
         Ok(self.child.exit_status())
     }
 }

@@ -420,12 +420,10 @@ impl Handler<PanelStatus> for ConsoleActor {
         let focused_panel = self.panels.get_mut(&msg.panel_name).unwrap();
         focused_panel.status = msg.status;
 
-        let message = msg
-            .status
-            .map(|c| format!("{:?}", c))
-            .unwrap_or_else(|| "?".to_string());
-        ctx.address()
-            .do_send(Output::now(msg.panel_name, message, true));
+        if let Some(message) = msg.status.map(|c| format!("Status: {:?}", c)) {
+            ctx.address()
+                .do_send(Output::now(msg.panel_name, message, true));
+        }
 
         self.draw();
     }

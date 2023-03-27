@@ -84,13 +84,13 @@ dependencies = [
 
 [[package]]
 name = "ansi-to-tui"
-version = "2.0.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3460d7beaf8b192c09a55933da038ccd514f00efdb37d7d87f3ce078336b47e9"
+checksum = "5f3d156989cd98fb225b1a83e82e133e95a151774a420c884f6a65c5f6fb1ee2"
 dependencies = [
  "nom",
+ "ratatui",
  "thiserror",
- "tui",
 ]
 
 [[package]]
@@ -1543,6 +1543,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4424af4bf778aae2051a77b60283332f386554255d722233d09fbfc7e30da2fc"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "ratatui"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcc0d032bccba900ee32151ec0265667535c230169f5a011154cdcd984e16829"
+dependencies = [
+ "bitflags",
+ "cassowary",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]

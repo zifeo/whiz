@@ -1,6 +1,7 @@
 use actix::prelude::*;
 use ansi_to_tui::IntoText;
 use chrono::prelude::*;
+use std::rc::Rc;
 use std::str;
 use std::{cmp::min, collections::HashMap, io};
 use subprocess::ExitStatus;
@@ -55,7 +56,7 @@ pub struct ConsoleActor {
     timestamp: bool,
 }
 
-pub fn chunks<T: Backend>(f: &Frame<T>) -> Vec<Rect> {
+pub fn chunks<T: Backend>(f: &Frame<T>) -> Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())

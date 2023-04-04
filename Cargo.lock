@@ -2447,7 +2447,7 @@ dependencies = [
 
 [[package]]
 name = "whiz"
-version = "0.3.3-beta.1"
+version = "0.4.0"
 dependencies = [
  "actix",
  "ansi-to-tui",

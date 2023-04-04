@@ -17,7 +17,7 @@ globset = "0.4.10"
 ignore = "0.4.20"
 indexmap = { version = "1.9.3", features = ["serde"] }
 # lade-sdk = { path = "../../github/lade/sdk"}
-lade-sdk = "0.5.1"
+lade-sdk = "0.5.2"
 notify = "5.1.0"
 openssl = { version = "0.10.49", features = ["vendored"] }
 path-absolutize = "3.0.14"

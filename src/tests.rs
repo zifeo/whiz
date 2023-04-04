@@ -79,7 +79,8 @@ fn hello() {
             env::current_dir().unwrap(),
             false,
             HashMap::new(),
-        );
+        )
+        .await?;
 
         let status = commands[0].send(WaitStatus).await?;
         println!("status: {:?}", status);

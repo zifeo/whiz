@@ -1,6 +1,7 @@
 use actix::prelude::*;
 use ansi_to_tui::IntoText;
 use chrono::prelude::*;
+use crossterm::event::KeyEvent;
 use std::rc::Rc;
 use std::str;
 use std::{cmp::min, collections::HashMap, io};
@@ -240,6 +241,15 @@ impl Actor for ConsoleActor {
 #[derive(Message, Debug)]
 #[rtype(result = "()")]
 pub struct TermEvent(Event);
+
+impl TermEvent {
+    pub fn quit() -> Self {
+        Self(Event::Key(KeyEvent::new(
+            KeyCode::Char('q'),
+            KeyModifiers::NONE,
+        )))
+    }
+}
 
 impl Handler<TermEvent> for ConsoleActor {
     type Result = ();

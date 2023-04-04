@@ -54,9 +54,10 @@ watch_parent:
 
 env_test:
     workdir: src
-    command: "echo $hello $world"
+    command: "echo $hello $world $version !"
     env:
         hello: "bonjour"
+        version: file://../Cargo.toml?query=.package.version
     env_file:
         - ../.env.example
 

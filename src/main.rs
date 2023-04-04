@@ -98,12 +98,18 @@ fn main() -> Result<()> {
         let watcher = WatcherActor::new(base_dir.clone()).start();
         CommandActor::from_config(
             &config,
-            console,
+            console.clone(),
             watcher,
             base_dir.clone(),
             args.verbose,
             pipes_map,
-        );
+        )
+        .await
+        .unwrap_or_else(|err| {
+            println!("error spawning commands: {}", err);
+            System::current().stop();
+            process::exit(1);
+        });
     };
 
     Arbiter::current().spawn(exec);

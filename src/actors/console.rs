@@ -1,6 +1,8 @@
 use actix::prelude::*;
 use ansi_to_tui::IntoText;
 use chrono::prelude::*;
+use crossterm::event::KeyEvent;
+use std::rc::Rc;
 use std::str;
 use std::{cmp::min, collections::HashMap, io};
 use subprocess::ExitStatus;
@@ -55,7 +57,7 @@ pub struct ConsoleActor {
     timestamp: bool,
 }
 
-pub fn chunks<T: Backend>(f: &Frame<T>) -> Vec<Rect> {
+pub fn chunks<T: Backend>(f: &Frame<T>) -> Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
@@ -239,6 +241,15 @@ impl Actor for ConsoleActor {
 #[derive(Message, Debug)]
 #[rtype(result = "()")]
 pub struct TermEvent(Event);
+
+impl TermEvent {
+    pub fn quit() -> Self {
+        Self(Event::Key(KeyEvent::new(
+            KeyCode::Char('q'),
+            KeyModifiers::NONE,
+        )))
+    }
+}
 
 impl Handler<TermEvent> for ConsoleActor {
     type Result = ();

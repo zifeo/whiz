@@ -1,8 +1,10 @@
 use actix::prelude::*;
 use anyhow::Ok;
+use anyhow::Result;
 use chrono::{Duration, Utc};
 use clap::Parser;
 use self_update::{backends::github::Update, cargo_crate_version, update::UpdateStatus};
+use tokio::time::{sleep, Duration as TokioDuration};
 use whiz::{
     actors::{command::CommandActor, console::ConsoleActor, watcher::WatcherActor},
     args::Command,
@@ -10,8 +12,6 @@ use whiz::{
     global_config::GlobalConfig,
     utils::recurse_config_file,
 };
-
-use anyhow::Result;
 
 use std::process;
 
@@ -25,27 +25,27 @@ async fn upgrade_check() -> Result<()> {
     let mut local_config = GlobalConfig::load(config_path.clone()).await?;
 
     if local_config.update_check + Duration::days(1) < Utc::now() {
-        tokio::task::spawn_blocking(move || {
+        let current_version = cargo_crate_version!();
+        let latest = tokio::task::spawn_blocking(move || {
             let update = Update::configure()
                 .repo_owner("zifeo")
                 .repo_name("whiz")
                 .bin_name("whiz")
-                .current_version(cargo_crate_version!())
+                .current_version(current_version)
                 .build()?;
 
-            let latest = update.get_latest_release()?;
-            if latest.version != update.current_version() {
-                println!(
-                    "New whiz update available: {} -> {} (use: whiz upgrade)",
-                    update.current_version(),
-                    latest.version
-                );
-            }
-
-            Ok(())
+            Ok(update.get_latest_release()?)
         })
         .await??;
 
+        if latest.version != current_version {
+            println!(
+                "New whiz update available: {} -> {} (use: whiz upgrade)",
+                current_version, latest.version
+            );
+            println!("Will resume in 5 seconds...");
+            sleep(TokioDuration::from_secs(5)).await;
+        }
         local_config.update_check = Utc::now();
         local_config.save(config_path).await?;
     }

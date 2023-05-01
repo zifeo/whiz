@@ -8,7 +8,7 @@ license = "MPL-2.0"
 [dependencies]
 actix = "0.13.0"
 ansi-to-tui = "3.0.0"
-anyhow = "1.0.70"
+anyhow = "1.0.71"
 chrono = { version = "0.4.24", features = ["serde"] }
 clap = { version = "4.2.4", features = ["derive"] }
 crossterm = "0.26.1"

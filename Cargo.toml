@@ -10,7 +10,7 @@ actix = "0.13.0"
 ansi-to-tui = "3.0.0"
 anyhow = "1.0.70"
 chrono = { version = "0.4.24", features = ["serde"] }
-clap = { version = "4.2.4", features = ["derive"] }
+clap = { version = "4.2.5", features = ["derive"] }
 crossterm = "0.26.1"
 directories = "5.0.0"
 dotenv-parser = "0.1.3"

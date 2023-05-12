@@ -1,4 +1,7 @@
+use std::eprintln;
+
 use actix::prelude::*;
+use anyhow::anyhow;
 use anyhow::Ok;
 use anyhow::Result;
 use chrono::{Duration, Utc};
@@ -12,8 +15,6 @@ use whiz::{
     global_config::GlobalConfig,
     utils::recurse_config_file,
 };
-
-use std::process;
 
 use whiz::args::Args;
 
@@ -52,7 +53,7 @@ async fn upgrade_check() -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
+fn main() {
     let system = System::with_tokio_rt(|| {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -62,11 +63,14 @@ fn main() -> Result<()> {
             .unwrap()
     });
 
-    Arbiter::current().spawn(async { run().await.unwrap() });
+    Arbiter::current().spawn(async {
+        run().await.unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            System::current().stop_with_code(1);
+        })
+    });
 
-    system.run()?;
-
-    Ok(())
+    let _ = system.run();
 }
 
 async fn run() -> Result<()> {
@@ -116,33 +120,27 @@ async fn run() -> Result<()> {
                 .await??;
             }
         }
-        process::exit(0);
+        return Ok(());
     };
 
-    let (config_file, config_path) = recurse_config_file(&args.file).unwrap_or_else(|err| {
-        eprintln!("file error: {}", err);
-        process::exit(1);
-    });
+    let (config_file, config_path) =
+        recurse_config_file(&args.file).map_err(|err| anyhow!("file error: {}", err))?;
 
-    let mut config = Config::from_file(&config_file).unwrap_or_else(|err| {
-        eprintln!("config error: {}", err);
-        process::exit(2);
-    });
+    let mut config =
+        Config::from_file(&config_file).map_err(|err| anyhow!("config error: {}", err))?;
 
-    let pipes_map = config.get_pipes_map().unwrap_or_else(|err| {
-        eprintln!("config error: {}", err);
-        process::exit(3);
-    });
+    let pipes_map = config
+        .get_pipes_map()
+        .map_err(|err| anyhow!("dag error: {}", err))?;
 
-    if let Err(err) = config.filter_jobs(&args.run) {
-        println!("argument error: {}", err);
-        process::exit(4);
-    };
+    config
+        .filter_jobs(&args.run)
+        .map_err(|err| anyhow!("argument error: {}", err))?;
 
     if args.list_jobs {
         let formatted_list_of_jobs = config.get_formatted_list_of_jobs();
         println!("List of jobs:\n{formatted_list_of_jobs}");
-        process::exit(0);
+        return Ok(());
     }
 
     let base_dir = config_path.parent().unwrap().to_path_buf();
@@ -159,11 +157,7 @@ async fn run() -> Result<()> {
         pipes_map,
     )
     .await
-    .unwrap_or_else(|err| {
-        println!("error spawning commands: {}", err);
-        System::current().stop();
-        process::exit(9);
-    });
+    .map_err(|err| anyhow!("error spawning commands: {}", err))?;
 
     Ok(())
 }

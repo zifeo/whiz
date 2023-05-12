@@ -34,6 +34,7 @@ impl<T: std::clone::Clone> Lift<T> {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Task {
     pub workdir: Option<String>,
     pub command: String,

@@ -23,7 +23,7 @@ notify = "5.1.0"
 openssl = { version = "0.10.52", features = ["vendored"] }
 path-absolutize = "3.1.0"
 path-clean = "1.0.1"
-regex = "1.8.1"
+regex = "1.8.3"
 self_update = { version = "0.36.0", features = [
   "archive-tar",
   "archive-zip",

@@ -2,7 +2,9 @@
 
 ![Crates.io](https://img.shields.io/crates/v/whiz)
 
-Whiz (/wɪz/) is a modern DAG/tasks runner for multi-platform monorepos.
+Whiz (/wɪz/) is a modern DAG/tasks runner for multi-platform monorepos. It
+provides convenient live reloading, env management, pipes, and more in a tabbed
+view.
 
 ![Demo](./demo.gif)
 
@@ -15,23 +17,64 @@ Whiz (/wɪz/) is a modern DAG/tasks runner for multi-platform monorepos.
 
 ## Getting started
 
-```
-eget zifeo/whiz --to $HOME/.local/bin
-cargo install whiz --locked
+You can download the binary executable from
+[releases page](https://github.com/zifeo/whiz/releases/) on GitHub, make it
+executable and add it to your `$PATH` or use
+[eget](https://github.com/zyedidia/eget) to automate those steps.
+
+```bash
+# via eget, make sure $HOME/.local/bin/ is in $PATH or choose another directory
+eget zifeo/whiz --to $HOME/.local/bin/
+
+# via cargo
+cargo install whiz --locked 
 cargo install --git https://github.com/zifeo/whiz --locked
+
+# create your tasks file, see https://github.com/zifeo/whiz/blob/main/whiz.yaml for an example
+touch whiz.yaml
+
+# run
+whiz
+
+# upgrade
+whiz upgrade
 ```
 
 ## Usage
 
-### passing list of values
+### Configuration file
 
-You can pass list of values for an option by repeating their flag
+Environment variables for all tasks can be defined in the `env` section at root
+level. You can use [Lade loaders](https://github.com/zifeo/lade) when loading
+secrets (e.g. `infisical://DOMAIN/PROJECT_NAME/ENV_NAME/SECRET_NAME`).
 
-```sh
-whiz --arg arg1 --arg arg2
+```
+env:
+    [key]: [value]
 ```
 
-## Flags
+All other root level keys are considered as tasks. Each time a dependency is
+load, the dependent task is also reloaded.
+
+```yaml
+[task]:
+    workdir: [working directory, by default .]
+    command: [command]
+    watch: [file or list of files]
+    env:
+        [key]: [value]
+    env_file: [file or list of env files]
+    depends_on: [task or list of task names for dependencies]
+    pipes: # see https://github.com/zifeo/whiz/blob/main/whiz.yaml
+        [regex]: [destination]
+```
+
+See this [file](https://github.com/zifeo/whiz/blob/main/whiz.yaml) for a
+complete example.
+
+### CLI options
+
+See `whiz --help` for more information.
 
 | Flags               | Description                  |
 | ------------------- | ---------------------------- |
@@ -43,11 +86,9 @@ whiz --arg arg1 --arg arg2
 | -v, --verbose       | enable verbose mode          |
 | -V, --version       | print whiz version           |
 
-## Key bindings
+### Key bindings
 
-### Navigation
-
-| Keys         | Motion                              |
+| Keys         | Action                              |
 | ------------ | ----------------------------------- |
 | l, RighArrow | go to next tab                      |
 | h, LeftArrow | go to previous tab                  |
@@ -59,10 +100,11 @@ whiz --arg arg1 --arg arg2
 | Ctl + f      | scroll down full page               |
 | 0            | go to last tab                      |
 | 1-9          | go to the tab at the given position |
+| q, Ctl + c   | exit the program                    |
+| r            | rerun the job in the current tab    |
 
-### Actions
+## Development
 
-| Keys       | Motion                           |
-| ---------- | -------------------------------- |
-| q, Ctl + c | exit the program                 |
-| r          | rerun the job in the current tab |
+```bash
+cargo run --
+```

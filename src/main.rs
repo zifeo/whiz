@@ -74,11 +74,6 @@ fn main() {
 }
 
 async fn run() -> Result<()> {
-    upgrade_check()
-        .await
-        .unwrap_or_else(|e| eprintln!("cannot check for update: {}", e));
-
-    let args = Args::parse();
     #[cfg(target_os = "windows")]
     std::env::set_var(
         "PWD",
@@ -87,6 +82,12 @@ async fn run() -> Result<()> {
             .to_str()
             .unwrap(),
     );
+
+    upgrade_check()
+        .await
+        .unwrap_or_else(|e| eprintln!("cannot check for update: {}", e));
+
+    let args = Args::try_parse()?;
 
     if let Some(command) = args.command {
         match command {

@@ -8,13 +8,14 @@ use std::{cmp::min, collections::HashMap, io};
 use subprocess::ExitStatus;
 use tui::backend::Backend;
 use tui::layout::Rect;
+use tui::text::Line;
 use tui::Frame;
 
 use tui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::Span,
     widgets::{Block, Borders, Paragraph, Tabs, Wrap},
     Terminal,
 };
@@ -148,7 +149,7 @@ impl ConsoleActor {
                     let log_height = chunks[0].height;
                     let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
 
-                    let lines: Vec<Spans> = logs
+                    let lines: Vec<Line> = logs
                         .iter()
                         .flat_map(|l| {
                             let mut t = l.0.into_text().unwrap();
@@ -164,7 +165,7 @@ impl ConsoleActor {
                         .scroll((maximum_scroll - min(maximum_scroll, focused_panel.shift), 0));
                     f.render_widget(paragraph, chunks[0]);
 
-                    let /*mut*/ titles: Vec<Spans> = self
+                    let /*mut*/ titles: Vec<Line> = self
                         .order
                         .iter()
                         .map(|panel| {
@@ -173,7 +174,7 @@ impl ConsoleActor {
                                 Some(_) => Span::styled(format!("{}!", panel), Style::default().fg(Color::Red)),
                                 None => Span::styled(format!("{}*", panel), Style::default()),
                             }).unwrap_or_else(|| Span::styled(panel, Style::default()));
-                            Spans::from(span)
+                            Line::from(span)
                         })
                         .collect();
                     /*

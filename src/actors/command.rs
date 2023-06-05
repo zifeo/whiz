@@ -63,9 +63,15 @@ impl Child {
                 }
                 None if kill => {
                     p.terminate()?;
-                    if p.wait_timeout(Duration::from_millis(50))?.is_none() {
-                        p.kill()?;
-                        p.wait()?;
+                    match p.wait_timeout(Duration::from_millis(500))? {
+                        Some(_status) => {
+                            //println!("terminated with {:?}", status);
+                        }
+                        None => {
+                            p.kill()?;
+                            let _status = p.wait()?;
+                            //println!("killed with {:?} ", _status);
+                        }
                     }
 
                     *self = Self::Killed;

@@ -5,6 +5,7 @@ use anyhow::anyhow;
 use anyhow::Ok;
 use anyhow::Result;
 use chrono::{Duration, Utc};
+use clap::CommandFactory;
 use clap::Parser;
 use self_update::{backends::github::Update, cargo_crate_version, update::UpdateStatus};
 use tokio::time::{sleep, Duration as TokioDuration};
@@ -53,7 +54,46 @@ async fn upgrade_check() -> Result<()> {
     Ok(())
 }
 
-fn main() {
+fn main() -> Result<()> {
+    let args = Args::try_parse()?;
+
+    if args.version {
+        println!("whiz {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
+    if args.help {
+        Args::command().print_help()?;
+        return Ok(());
+    }
+
+    if let Some(Command::Upgrade(opts)) = args.command {
+        let mut update = Update::configure();
+        update
+            .repo_owner("zifeo")
+            .repo_name("whiz")
+            .bin_name("whiz")
+            .show_download_progress(true)
+            .current_version(cargo_crate_version!())
+            .no_confirm(opts.yes);
+
+        if let Some(version) = opts.version {
+            update.target_version_tag(&format!("v{version}"));
+        }
+
+        match update.build()?.update_extended()? {
+            UpdateStatus::UpToDate => println!("Already up to date!"),
+            UpdateStatus::Updated(release) => {
+                println!("Updated successfully to {}!", release.version);
+                println!(
+                    "Release notes: https://github.com/zifeo/whiz/releases/tag/{}",
+                    release.name
+                );
+            }
+        };
+        return Ok(());
+    };
+
     let system = System::with_tokio_rt(|| {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -64,16 +104,18 @@ fn main() {
     });
 
     Arbiter::current().spawn(async {
-        run().await.unwrap_or_else(|e| {
+        run(args).await.unwrap_or_else(|e| {
             eprintln!("{}", e);
             System::current().stop_with_code(1);
         })
     });
 
     let _ = system.run();
+
+    Ok(())
 }
 
-async fn run() -> Result<()> {
+async fn run(args: Args) -> Result<()> {
     #[cfg(target_os = "windows")]
     std::env::set_var(
         "PWD",
@@ -86,43 +128,6 @@ async fn run() -> Result<()> {
     upgrade_check()
         .await
         .unwrap_or_else(|e| eprintln!("cannot check for update: {}", e));
-
-    let args = Args::try_parse()?;
-
-    if let Some(command) = args.command {
-        match command {
-            Command::Upgrade(opts) => {
-                tokio::task::spawn_blocking(move || {
-                    let mut update = Update::configure();
-                    update
-                        .repo_owner("zifeo")
-                        .repo_name("whiz")
-                        .bin_name("whiz")
-                        .show_download_progress(true)
-                        .current_version(cargo_crate_version!())
-                        .no_confirm(opts.yes);
-
-                    if let Some(version) = opts.version {
-                        update.target_version_tag(&format!("v{version}"));
-                    }
-
-                    match update.build()?.update_extended()? {
-                        UpdateStatus::UpToDate => println!("Already up to date!"),
-                        UpdateStatus::Updated(release) => {
-                            println!("Updated successfully to {}!", release.version);
-                            println!(
-                                "Release notes: https://github.com/zifeo/whiz/releases/tag/{}",
-                                release.name
-                            );
-                        }
-                    };
-                    Ok(())
-                })
-                .await??;
-            }
-        }
-        return Ok(());
-    };
 
     let (config_file, config_path) =
         recurse_config_file(&args.file).map_err(|err| anyhow!("file error: {}", err))?;

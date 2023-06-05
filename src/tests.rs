@@ -8,6 +8,7 @@ use subprocess::ExitStatus;
 use crate::actors::command::WaitStatus;
 use crate::actors::console::RegisterPanel;
 use crate::actors::watcher::WatchGlob;
+use crate::args::Args;
 use crate::{
     actors::{
         command::CommandActor,
@@ -18,6 +19,8 @@ use crate::{
     utils::recurse_config_file,
 };
 use actix::{actors::mocker::Mocker, prelude::*};
+use assert_cmd::Command;
+use clap::CommandFactory;
 
 fn within_system<F: Future<Output = Result<()>>>(f: F) {
     let system = System::new();
@@ -40,6 +43,17 @@ macro_rules! mock_actor {
             }
         })).start()
     )
+}
+
+#[test]
+fn verify_cli() {
+    Args::command().debug_assert()
+}
+
+#[test]
+fn end_to_end() {
+    let mut cmd = Command::cargo_bin("whiz").unwrap();
+    cmd.arg("-h").assert().success();
 }
 
 #[test]

@@ -39,3 +39,4 @@ textwrap = "0.16.0"
 tokio = { version = "1.28.2", features = ["full"] }
 tui = {version = "0.21.0", package = "ratatui"}
 url = "2.4.0"
+assert_cmd = "2.0.11"

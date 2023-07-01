@@ -111,9 +111,9 @@ dependencies = [
 
 [[package]]
 name = "ansi-to-tui"
-version = "3.0.0"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f3d156989cd98fb225b1a83e82e133e95a151774a420c884f6a65c5f6fb1ee2"
+checksum = "0b0e348dcd256ba06d44d5deabc88a7c0e80ee7303158253ca069bcd9e9b7f57"
 dependencies = [
  "nom",
  "ratatui",

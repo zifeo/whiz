@@ -8,6 +8,7 @@ use chrono::{Duration, Utc};
 use clap::CommandFactory;
 use clap::Parser;
 use self_update::{backends::github::Update, cargo_crate_version, update::UpdateStatus};
+use semver::Version;
 use tokio::time::{sleep, Duration as TokioDuration};
 use whiz::{
     actors::{command::CommandActor, console::ConsoleActor, watcher::WatcherActor},
@@ -40,7 +41,7 @@ async fn upgrade_check() -> Result<()> {
         })
         .await??;
 
-        if latest.version != current_version {
+        if Version::parse(&latest.version)? > Version::parse(current_version)? {
             println!(
                 "New whiz update available: {} -> {} (use: whiz upgrade)",
                 current_version, latest.version

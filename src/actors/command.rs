@@ -109,6 +109,7 @@ pub struct CommandActor {
     started_at: DateTime<Local>,
     env: Vec<(String, String)>,
     pipes: Vec<Pipe>,
+    entrypoint: Option<String>,
 }
 
 impl CommandActor {
@@ -164,6 +165,7 @@ impl CommandActor {
                 verbose,
                 env.into_iter().collect(),
                 task_pipes,
+                op.entrypoint.clone(),
             )
             .start();
 
@@ -187,6 +189,7 @@ impl CommandActor {
         verbose: bool,
         env: Vec<(String, String)>,
         pipes: Vec<Pipe>,
+        entrypoint: Option<String>,
     ) -> Self {
         Self {
             op_name,
@@ -203,6 +206,7 @@ impl CommandActor {
             started_at: Local::now(),
             env,
             pipes,
+            entrypoint,
         }
     }
 
@@ -260,7 +264,28 @@ impl CommandActor {
         let exec = Exec::cmd("cmd").args(&["/c", args]);
 
         #[cfg(not(target_os = "windows"))]
-        let exec = Exec::cmd("bash").args(&["-c", args]);
+        let exec = {
+            // Defaults to bash if no entrypoint is provided.
+            let mut entrypoint = match &self.entrypoint {
+                Some(e) => e.to_string(),
+                None => "bash -c".to_string(),
+            };
+            let mut nargs: Vec<&str> = vec![];
+    
+            // This is needed because the shell can interpret "bash -c" as a single command rather than "bash" as a command then "-c" as an argument.
+            let t = &entrypoint.clone();
+            if entrypoint.contains(' ') {
+                let c = t.split(' ').collect::<Vec<&str>>();
+                let a = &c[0].clone();
+                entrypoint = a.to_string();
+                for i in &c[1..] {
+                    nargs.push(*i);
+                }
+                nargs.push(&args);
+            }
+            
+            Exec::cmd(entrypoint).args(&nargs)
+        };
 
         let mut p = exec
             .cwd(&self.cwd)

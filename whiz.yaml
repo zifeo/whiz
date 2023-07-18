@@ -45,6 +45,14 @@ dodo:
 color:
     command: python3 -c 'print(u"\u001b[31mHelloWorld\u001b[0m")'
 
+color2:
+    command: 'print(u"\033[92mHelloWorld\033[0m")'
+    entrypoint: 'python3 -c'
+
+what_shell:
+    command: echo $(which $0)
+    entrypoint: 'sh -c'
+
 watch_parent:
     workdir: src
     command: ls

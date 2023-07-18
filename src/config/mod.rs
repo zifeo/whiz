@@ -38,6 +38,7 @@ impl<T: std::clone::Clone> Lift<T> {
 pub struct Task {
     pub workdir: Option<String>,
     pub command: String,
+    pub entrypoint: Option<String>,
 
     #[serde(default)]
     pub watch: Lift<String>,

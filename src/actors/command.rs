@@ -260,15 +260,16 @@ impl CommandActor {
             status: None,
         });
 
-        #[cfg(target_os = "windows")]
-        let exec = Exec::cmd("cmd").args(&["/c", args]);
-
-        #[cfg(not(target_os = "windows"))]
         let exec = {
             // Defaults to bash if no entrypoint is provided.
             let mut entrypoint = match &self.entrypoint {
                 Some(e) => e.to_string(),
+
+                #[cfg(not(target_os = "windows"))]
                 None => "bash -c".to_string(),
+
+                #[cfg(target_os = "windows")]
+                None => "cmd /c".to_string(),
             };
             let mut nargs: Vec<&str> = vec![];
     

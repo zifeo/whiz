@@ -16,6 +16,10 @@ once:
         A: world
     command: "echo hello $A"
 
+entrypoint_only:
+    entrypoint: "ls ./src ./src/config"
+    command: ''
+
 once_b:
     command: "sleep 2 && echo $B"
     depends_on: once

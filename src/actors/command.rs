@@ -18,6 +18,8 @@ use std::{
     path::PathBuf,
 };
 
+use shlex;
+
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
@@ -262,29 +264,23 @@ impl CommandActor {
 
         let exec = {
             // Defaults to bash if no entrypoint is provided.
-            let mut entrypoint = match &self.entrypoint {
-                Some(e) => e.to_string(),
+            let entrypoint_lex = match &self.entrypoint {
+                Some(e) => e.as_str(),
 
                 #[cfg(not(target_os = "windows"))]
-                None => "bash -c".to_string(),
+                None => "bash -c",
 
                 #[cfg(target_os = "windows")]
-                None => "cmd /c".to_string(),
+                None => "cmd /c",
             };
-            let mut nargs: Vec<&str> = vec![];
-    
-            // This is needed because the shell can interpret "bash -c" as a single command rather than "bash" as a command then "-c" as an argument.
-            let t = &entrypoint.clone();
-            if entrypoint.contains(' ') {
-                let c = t.split(' ').collect::<Vec<&str>>();
-                let a = &c[0].clone();
-                entrypoint = a.to_string();
-                for i in &c[1..] {
-                    nargs.push(*i);
-                }
-                nargs.push(&args);
-            }
+
+            let entrypoint_str = shlex::split(entrypoint_lex).unwrap();
+            let entrypoint = &entrypoint_str[0];
+            let mut nargs = entrypoint_str[1..].to_owned();
+            nargs.push(args.to_owned());
             
+            
+
             Exec::cmd(entrypoint).args(&nargs)
         };
 

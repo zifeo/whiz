@@ -39,6 +39,12 @@ sleep_count:
     depends_on:
         - once
 
+no_command:
+    entrypoint: python3 -c "print(\"No command specified\")"
+
+no_explicit_entrypoint:
+    command: echo "there's no entrypoint :("
+
 dodo:
     workdir: .
     watch: target
@@ -50,7 +56,7 @@ color:
     command: python3 -c 'print(u"\u001b[31mHelloWorld\u001b[0m")'
 
 color2:
-    command: 'print(u"\033[92mHelloWorld\033[0m")'
+    command: 'print(u"\033[92mHello World\033[0m")'
     entrypoint: 'python3 -c'
 
 what_shell:

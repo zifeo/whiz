@@ -256,15 +256,10 @@ impl CommandActor {
     fn reload(&mut self) -> Result<()> {
         let args = &self.operator.command;
 
-        self.log_debug(format!("EXEC: {} at {:?}", args, self.cwd));
-        self.console.do_send(PanelStatus {
-            panel_name: self.op_name.clone(),
-            status: None,
-        });
-
         let exec = {
             // Defaults to bash if no entrypoint is provided.
             let entrypoint_lex = match &self.entrypoint {
+                
                 Some(e) => e.as_str(),
 
                 #[cfg(not(target_os = "windows"))]
@@ -277,9 +272,17 @@ impl CommandActor {
             let entrypoint_str = shlex::split(entrypoint_lex).unwrap();
             let entrypoint = &entrypoint_str[0];
             let mut nargs = entrypoint_str[1..].to_owned();
-            nargs.push(args.to_owned());
+
+            match args {
+                Some(a) => { let a = a.clone(); if a.len() == 0 {} else { nargs.push(a) } },
+                None => {},
+            };
             
-            
+            self.log_debug(format!("EXEC: {} {:?} at {:?}", entrypoint_lex, nargs, self.cwd));
+            self.console.do_send(PanelStatus {
+                panel_name: self.op_name.clone(),
+                status: None,
+            });
 
             Exec::cmd(entrypoint).args(&nargs)
         };

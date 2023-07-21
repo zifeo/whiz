@@ -18,6 +18,8 @@ use std::{
     path::PathBuf,
 };
 
+use shlex;
+
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
@@ -109,6 +111,7 @@ pub struct CommandActor {
     started_at: DateTime<Local>,
     env: Vec<(String, String)>,
     pipes: Vec<Pipe>,
+    entrypoint: Option<String>,
 }
 
 impl CommandActor {
@@ -164,6 +167,7 @@ impl CommandActor {
                 verbose,
                 env.into_iter().collect(),
                 task_pipes,
+                op.entrypoint.clone(),
             )
             .start();
 
@@ -187,6 +191,7 @@ impl CommandActor {
         verbose: bool,
         env: Vec<(String, String)>,
         pipes: Vec<Pipe>,
+        entrypoint: Option<String>,
     ) -> Self {
         Self {
             op_name,
@@ -203,6 +208,7 @@ impl CommandActor {
             started_at: Local::now(),
             env,
             pipes,
+            entrypoint,
         }
     }
 
@@ -250,17 +256,47 @@ impl CommandActor {
     fn reload(&mut self) -> Result<()> {
         let args = &self.operator.command;
 
-        self.log_debug(format!("EXEC: {} at {:?}", args, self.cwd));
-        self.console.do_send(PanelStatus {
-            panel_name: self.op_name.clone(),
-            status: None,
-        });
+        let default_entrypoint = {
+            #[cfg(not(target_os = "windows"))]
+            {"bash -c"}
 
-        #[cfg(target_os = "windows")]
-        let exec = Exec::cmd("cmd").args(&["/c", args]);
+            #[cfg(target_os = "windows")]
+            {"cmd /c"}
+        };
 
-        #[cfg(not(target_os = "windows"))]
-        let exec = Exec::cmd("bash").args(&["-c", args]);
+        let exec = {
+            let entrypoint_lex = match &self.entrypoint {
+                Some(e) => if !e.is_empty() { e.as_str() } else { default_entrypoint },
+                None => default_entrypoint,
+            };
+
+            let entrypoint_split = {
+                let mut s = shlex::split(entrypoint_lex).unwrap();
+
+                match args {
+                    Some(a) => {
+                        s.push(a.to_owned());
+                        s
+                    },
+                    None => s,
+                }
+            };
+
+            let entrypoint = &entrypoint_split[0];
+            let nargs: Vec<String> = entrypoint_split[1..]
+                .to_owned()
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect();
+            
+            self.log_debug(format!("EXEC: {} {:?} at {:?}", entrypoint_lex, nargs, self.cwd));
+            self.console.do_send(PanelStatus {
+                panel_name: self.op_name.clone(),
+                status: None,
+            });
+
+            Exec::cmd(entrypoint).args(&nargs)
+        };
 
         let mut p = exec
             .cwd(&self.cwd)

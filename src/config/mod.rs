@@ -37,7 +37,8 @@ impl<T: std::clone::Clone> Lift<T> {
 #[serde(deny_unknown_fields)]
 pub struct Task {
     pub workdir: Option<String>,
-    pub command: String,
+    pub command: Option<String>,
+    pub entrypoint: Option<String>,
 
     #[serde(default)]
     pub watch: Lift<String>,
@@ -397,7 +398,7 @@ mod tests {
             );
 
             let job_with_alias = config.ops.get("with_alias").unwrap();
-            assert_eq!(&job_with_alias.command, "echo with_alias");
+            assert_eq!(&job_with_alias.command.clone().unwrap(), "echo with_alias");
         }
     }
 

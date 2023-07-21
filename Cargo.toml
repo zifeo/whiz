@@ -41,3 +41,4 @@ tui = {version = "0.22.0", package = "ratatui"}
 url = "2.4.0"
 assert_cmd = "2.0.12"
 semver = "1.0.18"
+shlex = "1.1.0"

@@ -256,27 +256,38 @@ impl CommandActor {
     fn reload(&mut self) -> Result<()> {
         let args = &self.operator.command;
 
+        let default_entrypoint = {
+            #[cfg(not(target_os = "windows"))]
+            {"bash -c"}
+
+            #[cfg(target_os = "windows")]
+            {"cmd /c"}
+        };
+
         let exec = {
-            // Defaults to bash if no entrypoint is provided.
             let entrypoint_lex = match &self.entrypoint {
-                
-                Some(e) => e.as_str(),
-
-                #[cfg(not(target_os = "windows"))]
-                None => "bash -c",
-
-                #[cfg(target_os = "windows")]
-                None => "cmd /c",
+                Some(e) => if !e.is_empty() { e.as_str() } else { default_entrypoint },
+                None => default_entrypoint,
             };
 
-            let entrypoint_str = shlex::split(entrypoint_lex).unwrap();
-            let entrypoint = &entrypoint_str[0];
-            let mut nargs = entrypoint_str[1..].to_owned();
+            let entrypoint_split = {
+                let mut s = shlex::split(entrypoint_lex).unwrap();
 
-            match args {
-                Some(a) => { let a = a.clone(); if a.len() == 0 {} else { nargs.push(a) } },
-                None => {},
+                match args {
+                    Some(a) => {
+                        s.push(a.to_owned());
+                        s
+                    },
+                    None => s,
+                }
             };
+
+            let entrypoint = &entrypoint_split[0];
+            let nargs: Vec<String> = entrypoint_split[1..]
+                .to_owned()
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect();
             
             self.log_debug(format!("EXEC: {} {:?} at {:?}", entrypoint_lex, nargs, self.cwd));
             self.console.do_send(PanelStatus {

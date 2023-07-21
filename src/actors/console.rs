@@ -51,6 +51,8 @@ impl Panel {
 
 pub struct ConsoleActor {
     terminal: Terminal<CrosstermBackend<io::Stdout>>,
+    width: u16,
+    offset: usize,
     index: String,
     order: Vec<String>,
     arbiter: Arbiter,
@@ -72,6 +74,8 @@ impl ConsoleActor {
         let terminal = Terminal::new(backend).unwrap();
         Self {
             terminal,
+            width: 0,
+            offset: 0,
             index: order[0].clone(),
             order,
             arbiter: Arbiter::new(),
@@ -86,7 +90,6 @@ impl ConsoleActor {
             // maximum_scroll is the number of lines
             // overflowing in the current focused panel
             let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
-
             // `focused_panel.shift` goes from 0 until maximum_scroll
             focused_panel.shift = min(focused_panel.shift + shift, maximum_scroll);
         }
@@ -107,6 +110,47 @@ impl ConsoleActor {
         chunks(&frame)[0].height
     }
 
+    pub fn get_log_width(&mut self) -> u16 {
+        let frame = self.terminal.get_frame();
+        chunks(&frame)[0].width
+    }
+    pub fn get_visible_tabs(&self) -> Vec<String> {
+        let mut counter: usize = 0;
+        let mut ret: Vec<String> = Vec::new();
+        let mut width = (self.width - 4) as usize; // because frame has borders "| " and " |"
+        if self.offset > 0 {
+            ret.push("...".to_string());
+            width -= 6; // "... | ".len() = 6
+        }
+        for i in self.offset..self.order.len() {
+            let tab = self.order[i].clone();
+            counter += tab.len();
+            if counter >= width - 6 {
+                // if tab goes beyond
+                let ind = counter - (width - 6);
+                if ind == 0 {
+                    ret.push(tab[..tab.len() - 1].to_string());
+                    ret.push(" ...".to_string());
+                } else if ind <= tab.len() {
+                    if tab.len() - ind != 0 {
+                        ret.push(tab[..tab.len() - ind].to_string());
+                    } else {
+                        ret.push("-".to_string());
+                    }
+                    ret.push("...".to_string());
+                } else {
+                    ret.push(" ".repeat(ind + 1 - tab.len()).to_owned() + "...")
+                }
+
+                return ret;
+            } else {
+                ret.push(tab);
+            }
+            counter += 4; // divider
+        }
+        ret
+    }
+
     pub fn go_to(&mut self, panel_index: usize) {
         if panel_index < self.order.len() {
             self.index = self.order[panel_index].clone();
@@ -121,10 +165,12 @@ impl ConsoleActor {
     }
 
     pub fn next(&mut self) {
+        self.offset = (self.offset + 1) % self.order.len();
         self.index = self.order[(self.idx() + 1) % self.order.len()].clone();
     }
 
     pub fn previous(&mut self) {
+        self.offset = (self.offset + self.order.len() - 1) % self.order.len();
         self.index = self.order[(self.idx() + self.order.len() - 1) % self.order.len()].clone();
     }
 
@@ -140,12 +186,13 @@ impl ConsoleActor {
 
     fn draw(&mut self) {
         let idx = self.idx();
+        self.width = self.get_log_width();
         if let Some(focused_panel) = &self.panels.get(&self.index) {
+            let visible_tabs = self.get_visible_tabs();
             self.terminal
                 .draw(|f| {
                     let chunks = chunks(f);
                     let logs = &focused_panel.logs;
-
                     let log_height = chunks[0].height;
                     let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
 
@@ -164,9 +211,7 @@ impl ConsoleActor {
                     let paragraph = paragraph
                         .scroll((maximum_scroll - min(maximum_scroll, focused_panel.shift), 0));
                     f.render_widget(paragraph, chunks[0]);
-
-                    let /*mut*/ titles: Vec<Line> = self
-                        .order
+                    let /*mut*/ titles: Vec<Line> = visible_tabs
                         .iter()
                         .map(|panel| {
                             let span = self.panels.get(panel).map(|p| match p.status {
@@ -187,9 +232,13 @@ impl ConsoleActor {
                         f.size().width,
                     ))));
                     */
+                    let mut real_offset = self.offset;
+                    if real_offset > 0 {
+                        real_offset -= 1; // first in tabs list "...", skip it
+                    }
                     let tabs = Tabs::new(titles)
                         .block(Block::default().borders(Borders::ALL))
-                        .select(idx)
+                        .select(idx - real_offset)
                         .highlight_style(
                             Style::default()
                                 .add_modifier(Modifier::BOLD)

@@ -52,7 +52,7 @@ To continue with installation, please choose from one of the following values:
 - x86_64-pc-windows-msvc
 
 Then set the PLATFORM environment variable, and re-run this script:
-$ curl $INSTALLER_URL | PLATFORM=x86_64-unknown-linux-musl bash
+$ curl -fsSL $INSTALLER_URL | PLATFORM=x86_64-unknown-linux-musl bash
 EOF
     exit 1
   fi
@@ -74,7 +74,7 @@ To continue with installation, please make sure the release exists in:
 $RELEASE_URL
 
 Then set the PLATFORM and VERSION environment variables, and re-run this script:
-$ curl $INSTALLER_URL | PLATFORM=x86_64-unknown-linux-musl VERSION=0.1.10 bash
+$ curl -fsSL $INSTALLER_URL | PLATFORM=x86_64-unknown-linux-musl VERSION=0.1.10 bash
 EOF
   exit 1
 fi

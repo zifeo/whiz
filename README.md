@@ -19,12 +19,12 @@ view.
 
 You can download the binary executable from
 [releases page](https://github.com/zifeo/whiz/releases/) on GitHub, make it
-executable and add it to your `$PATH` or use
-[eget](https://github.com/zyedidia/eget) to automate those steps.
+executable and add it to your `$PATH` or use the method below to automate those
+steps.
 
 ```bash
-# via eget, make sure $HOME/.local/bin/ is in $PATH or choose another directory
-eget zifeo/whiz --to $HOME/.local/bin/
+curl -fsSL https://raw.githubusercontent.com/zifeo/whiz/main/installer.sh | bash
+sudo mv whiz /usr/local/bin # or any other directory in your $PATH
 
 # via cargo
 cargo install whiz --locked 

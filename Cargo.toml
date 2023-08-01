@@ -32,7 +32,7 @@ self_update = { version = "0.37.0", features = [
   "compression-zip-bzip2",
 ] }
 serde = { version = "1.0.179", features = ["derive"] }
-serde_yaml = "0.9.23"
+serde_yaml = "0.9.25"
 strip-ansi-escapes = "0.1.1"
 subprocess = "0.2.9"
 textwrap = "0.16.0"

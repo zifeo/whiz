@@ -29,6 +29,10 @@ use crossterm::{
 
 use super::command::{CommandActor, PoisonPill, Reload};
 
+const DIVIDER_LENGTH: usize = 3; // " | "
+const MORE_TABS_LENGTH: usize = 3; // "..."
+const BORDER_LENGTH: u16 = 2; // "| " or " |"
+
 pub struct Panel {
     logs: Vec<(String, Style)>,
     lines: u16,
@@ -51,6 +55,9 @@ impl Panel {
 
 pub struct ConsoleActor {
     terminal: Terminal<CrosstermBackend<io::Stdout>>,
+    width: u16,
+    offset: usize,
+    step: usize,
     index: String,
     order: Vec<String>,
     arbiter: Arbiter,
@@ -72,6 +79,9 @@ impl ConsoleActor {
         let terminal = Terminal::new(backend).unwrap();
         Self {
             terminal,
+            width: 0,
+            offset: 0,
+            step: 0,
             index: order[0].clone(),
             order,
             arbiter: Arbiter::new(),
@@ -86,7 +96,6 @@ impl ConsoleActor {
             // maximum_scroll is the number of lines
             // overflowing in the current focused panel
             let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
-
             // `focused_panel.shift` goes from 0 until maximum_scroll
             focused_panel.shift = min(focused_panel.shift + shift, maximum_scroll);
         }
@@ -101,10 +110,50 @@ impl ConsoleActor {
             }
         }
     }
-
+    pub fn get_offset(&self) -> usize {
+        if self.offset > 0 {
+            self.offset - 1 // first in tabs list "...", skip it
+        } else {
+            self.offset
+        }
+    }
     pub fn get_log_height(&mut self) -> u16 {
         let frame = self.terminal.get_frame();
         chunks(&frame)[0].height
+    }
+
+    pub fn get_log_width(&mut self) -> u16 {
+        let frame = self.terminal.get_frame();
+        chunks(&frame)[0].width
+    }
+
+    pub fn get_visible_tabs(&self) -> (Vec<String>, usize) {
+        let mut counter: usize = 0;
+        let mut ret: Vec<String> = Vec::new();
+        let mut width = (self.width - (BORDER_LENGTH * 2)) as usize;
+        let mut r = 0;
+        if self.offset > 0 {
+            ret.push("...".to_string());
+            width -= MORE_TABS_LENGTH + DIVIDER_LENGTH; // "... | "
+        }
+        for i in self.offset..self.order.len() {
+            r = i;
+            let tab = self.order[i].clone();
+            let mut next = 0;
+            counter += tab.len() + 1; // has "." | "!" | "*"
+            if i < self.order.len() - 1 {
+                next = self.order[i + 1].clone().len() + DIVIDER_LENGTH + 1;
+            }
+            if counter + DIVIDER_LENGTH + MORE_TABS_LENGTH + next >= width {
+                ret.push(tab + &" ".repeat(width - MORE_TABS_LENGTH - DIVIDER_LENGTH - counter));
+                ret.push("...".to_string());
+                return (ret, r);
+            } else {
+                ret.push(tab);
+            }
+            counter += DIVIDER_LENGTH;
+        }
+        (ret, r)
     }
 
     pub fn go_to(&mut self, panel_index: usize) {
@@ -121,10 +170,24 @@ impl ConsoleActor {
     }
 
     pub fn next(&mut self) {
+        let idx = self.idx();
+        let tabs = self.get_visible_tabs().1;
+        if idx == tabs {
+            self.offset = 0;
+        } else if idx + self.step + 1 >= tabs {
+            self.offset = (self.offset + 1) % self.order.len();
+        }
         self.index = self.order[(self.idx() + 1) % self.order.len()].clone();
     }
 
     pub fn previous(&mut self) {
+        let idx = self.idx();
+        if idx == 0 {
+            self.offset = (self.offset + self.order.len() - 1) % self.order.len();
+        } else if self.offset == 0 && self.idx() <= self.step {
+        } else if self.idx() as isize - self.step as isize <= self.offset as isize {
+            self.offset = (self.offset + self.order.len() - 1) % self.order.len();
+        }
         self.index = self.order[(self.idx() + self.order.len() - 1) % self.order.len()].clone();
     }
 
@@ -139,13 +202,16 @@ impl ConsoleActor {
     }
 
     fn draw(&mut self) {
+        self.width = self.get_log_width();
         let idx = self.idx();
+        let offset = self.get_offset();
+        let (visible_tabs, length) = self.get_visible_tabs();
+        self.step = length / 4;
         if let Some(focused_panel) = &self.panels.get(&self.index) {
             self.terminal
                 .draw(|f| {
                     let chunks = chunks(f);
                     let logs = &focused_panel.logs;
-
                     let log_height = chunks[0].height;
                     let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
 
@@ -164,15 +230,15 @@ impl ConsoleActor {
                     let paragraph = paragraph
                         .scroll((maximum_scroll - min(maximum_scroll, focused_panel.shift), 0));
                     f.render_widget(paragraph, chunks[0]);
-
-                    let /*mut*/ titles: Vec<Line> = self
-                        .order
+                    let /*mut*/ titles: Vec<Line> = visible_tabs
                         .iter()
                         .map(|panel| {
-                            let span = self.panels.get(panel).map(|p| match p.status {
-                                Some(ExitStatus::Exited(0)) => Span::styled(format!("{}.", panel), Style::default().fg(Color::Green)),
-                                Some(_) => Span::styled(format!("{}!", panel), Style::default().fg(Color::Red)),
-                                None => Span::styled(format!("{}*", panel), Style::default()),
+                            let cleared_panel = panel.trim_end().to_string();
+                            let spaces = " ".repeat(panel.len() - cleared_panel.len());
+                            let span = self.panels.get(&cleared_panel).map(|p| match p.status {
+                                Some(ExitStatus::Exited(0)) => Span::styled(format!("{}.{}", cleared_panel, spaces), Style::default().fg(Color::Green)),
+                                Some(_) => Span::styled(format!("{}!{}", cleared_panel, spaces), Style::default().fg(Color::Red)),
+                                None => Span::styled(format!("{}*{}", cleared_panel, spaces), Style::default()),
                             }).unwrap_or_else(|| Span::styled(panel, Style::default()));
                             Line::from(span)
                         })
@@ -189,7 +255,7 @@ impl ConsoleActor {
                     */
                     let tabs = Tabs::new(titles)
                         .block(Block::default().borders(Borders::ALL))
-                        .select(idx)
+                        .select(idx - offset)
                         .highlight_style(
                             Style::default()
                                 .add_modifier(Modifier::BOLD)

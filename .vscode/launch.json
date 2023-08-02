@@ -1,0 +1,61 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'whiz'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=whiz"
+                ],
+                "filter": {
+                    "name": "whiz",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'whiz'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=whiz",
+                    "--package=whiz"
+                ],
+                "filter": {
+                    "name": "whiz",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'whiz'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=whiz",
+                    "--package=whiz"
+                ],
+                "filter": {
+                    "name": "whiz",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

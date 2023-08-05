@@ -24,7 +24,6 @@ steps.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zifeo/whiz/main/installer.sh | bash
-sudo mv whiz /usr/local/bin # or any other directory in your $PATH
 
 # via cargo
 cargo install whiz --locked 

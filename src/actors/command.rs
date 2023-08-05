@@ -258,15 +258,25 @@ impl CommandActor {
 
         let default_entrypoint = {
             #[cfg(not(target_os = "windows"))]
-            {"bash -c"}
+            {
+                "bash -c"
+            }
 
             #[cfg(target_os = "windows")]
-            {"cmd /c"}
+            {
+                "cmd /c"
+            }
         };
 
         let exec = {
             let entrypoint_lex = match &self.entrypoint {
-                Some(e) => if !e.is_empty() { e.as_str() } else { default_entrypoint },
+                Some(e) => {
+                    if !e.is_empty() {
+                        e.as_str()
+                    } else {
+                        default_entrypoint
+                    }
+                }
                 None => default_entrypoint,
             };
 
@@ -277,19 +287,22 @@ impl CommandActor {
                     Some(a) => {
                         s.push(a.to_owned());
                         s
-                    },
+                    }
                     None => s,
                 }
             };
 
             let entrypoint = &entrypoint_split[0];
-            let nargs: Vec<String> = entrypoint_split[1..]
-                .to_owned()
-                .into_iter()
+            let nargs = entrypoint_split[1..]
+                .iter()
                 .filter(|s| !s.is_empty())
-                .collect();
-            
-            self.log_debug(format!("EXEC: {} {:?} at {:?}", entrypoint_lex, nargs, self.cwd));
+                .cloned()
+                .collect::<Vec<String>>();
+
+            self.log_debug(format!(
+                "EXEC: {} {:?} at {:?}",
+                entrypoint_lex, nargs, self.cwd
+            ));
             self.console.do_send(PanelStatus {
                 panel_name: self.op_name.clone(),
                 status: None,

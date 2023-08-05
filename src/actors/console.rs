@@ -2,16 +2,16 @@ use actix::prelude::*;
 use ansi_to_tui::IntoText;
 use chrono::prelude::*;
 use crossterm::event::KeyEvent;
+use ratatui::backend::Backend;
+use ratatui::layout::Rect;
+use ratatui::text::Line;
+use ratatui::Frame;
 use std::rc::Rc;
 use std::str;
 use std::{cmp::min, collections::HashMap, io};
 use subprocess::ExitStatus;
-use tui::backend::Backend;
-use tui::layout::Rect;
-use tui::text::Line;
-use tui::Frame;
 
-use tui::{
+use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},

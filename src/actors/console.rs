@@ -367,7 +367,7 @@ impl Output {
 }
 
 fn wrapped_lines(message: &String, width: u16) -> u16 {
-    let clean = strip_ansi_escapes::strip(message).unwrap();
+    let clean = strip_ansi_escapes::strip(message);
     textwrap::wrap(str::from_utf8(&clean).unwrap(), width as usize).len() as u16
 }
 

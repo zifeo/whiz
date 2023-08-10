@@ -2,16 +2,16 @@ use actix::prelude::*;
 use ansi_to_tui::IntoText;
 use chrono::prelude::*;
 use crossterm::event::KeyEvent;
+use ratatui::backend::Backend;
+use ratatui::layout::Rect;
+use ratatui::text::Line;
+use ratatui::Frame;
 use std::rc::Rc;
 use std::str;
 use std::{cmp::min, collections::HashMap, io};
 use subprocess::ExitStatus;
-use tui::backend::Backend;
-use tui::layout::Rect;
-use tui::text::Line;
-use tui::Frame;
 
-use tui::{
+use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
@@ -367,7 +367,7 @@ impl Output {
 }
 
 fn wrapped_lines(message: &String, width: u16) -> u16 {
-    let clean = strip_ansi_escapes::strip(message).unwrap();
+    let clean = strip_ansi_escapes::strip(message);
     textwrap::wrap(str::from_utf8(&clean).unwrap(), width as usize).len() as u16
 }
 

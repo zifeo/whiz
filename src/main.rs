@@ -167,6 +167,7 @@ async fn run(args: Args) -> Result<()> {
         args.verbose,
         pipes_map,
         colors_map,
+        args.no_watch,
     )
     .await
     .map_err(|err| anyhow!("error spawning commands: {}", err))?;

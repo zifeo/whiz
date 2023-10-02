@@ -46,4 +46,12 @@ pub struct Args {
     /// List all the jobs set in the config file
     #[clap(long)]
     pub list_jobs: bool,
+
+    /// Whiz will exit after all commands have finished executing.
+    #[clap(long)]
+    pub exit_after: bool,
+
+    /// Disables triggering task reloading from any watched files
+    #[clap(long)]
+    pub no_watch: bool,
 }

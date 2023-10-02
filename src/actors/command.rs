@@ -21,6 +21,7 @@ use std::{
 use shlex;
 
 use crate::config::color::ColorOption;
+use crate::actors::grim_reaper::PermaDeathInvite;
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
@@ -115,6 +116,7 @@ pub struct CommandActor {
     colors: Vec<ColorOption>,
     entrypoint: Option<String>,
     no_watch: bool,
+    death_invite: Option<PermaDeathInvite>,
 }
 
 impl CommandActor {
@@ -127,7 +129,7 @@ impl CommandActor {
         pipes_map: HashMap<String, Vec<Pipe>>,
         colors_map: HashMap<String, Vec<ColorOption>>,
         global_no_watch: bool,
-    ) -> Result<Vec<Addr<CommandActor>>> {
+    ) -> Result<HashMap<String, Addr<CommandActor>>> {
         let mut shared_env = HashMap::from_iter(std::env::vars());
         shared_env.extend(lade_sdk::resolve(&config.env, &shared_env)?);
         let shared_env = lade_sdk::hydrate(shared_env, base_dir.clone()).await?;
@@ -186,7 +188,8 @@ impl CommandActor {
             commands.insert(op_name, actor);
         }
 
-        Ok(commands.values().map(|i| i.to_owned()).collect::<Vec<_>>())
+        // Ok(commands.values().map(|i| i.to_owned()).collect::<Vec<_>>())
+        Ok(commands)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -222,6 +225,7 @@ impl CommandActor {
             colors,
             entrypoint,
             no_watch,
+            death_invite: None,
         }
     }
 
@@ -415,6 +419,12 @@ impl CommandActor {
 
         Ok(())
     }
+
+    fn accept_death_invite(&mut self) {
+        if let Some(invite) = self.death_invite.take() {
+            invite.rsvp(self.op_name.clone(), self.child.exit_status().unwrap());
+        }
+    }
 }
 
 impl Actor for CommandActor {
@@ -517,6 +527,10 @@ impl Handler<Reload> for CommandActor {
     fn handle(&mut self, msg: Reload, _: &mut Context<Self>) -> Self::Result {
         self.ensure_stopped();
 
+        if self.death_invite.is_some() {
+            return;
+        }
+
         match &msg {
             Reload::Start => {
                 self.send_will_reload();
@@ -610,6 +624,7 @@ impl Handler<StdoutTerminated> for CommandActor {
                 panel_name: self.op_name.clone(),
                 status: exit,
             });
+            self.accept_death_invite();
         }
     }
 }
@@ -622,6 +637,20 @@ impl Handler<PoisonPill> for CommandActor {
     type Result = ();
 
     fn handle(&mut self, _: PoisonPill, ctx: &mut Context<Self>) -> Self::Result {
+        self.accept_death_invite();
         ctx.stop();
+    }
+}
+
+impl Handler<PermaDeathInvite> for CommandActor {
+    type Result = ();
+
+    fn handle(&mut self, evt: PermaDeathInvite, _: &mut Context<Self>) -> Self::Result {
+        self.child.poll(false).unwrap();
+        if let Some(status) = self.child.exit_status() {
+            evt.rsvp(self.op_name.clone(), status);
+        } else {
+            self.death_invite = Some(evt);
+        }
     }
 }

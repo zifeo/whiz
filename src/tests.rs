@@ -3,6 +3,7 @@ use std::path::Path;
 use std::{env, future::Future};
 
 use anyhow::{Ok, Result};
+
 use subprocess::ExitStatus;
 
 use crate::actors::command::WaitStatus;
@@ -12,7 +13,8 @@ use crate::args::Args;
 use crate::{
     actors::{
         command::CommandActor,
-        console::{ConsoleActor, Output, TermEvent},
+        console::{ConsoleActor, Output, PanelStatus, TermEvent},
+        grim_reaper::GrimReaperActor,
         watcher::WatcherActor,
     },
     config::Config,
@@ -38,7 +40,10 @@ macro_rules! mock_actor {
                 } else
             )*
             {
-                println!("unexpect {:?}", msg.downcast::<Result<ExitStatus, std::io::Error>>());
+                println!("unexpected {:?} on {}",
+                    msg.downcast::<Result<ExitStatus, std::io::Error>>(),
+                    stringify!($tt)
+                );
                 Box::new(None::<()>)
             }
         })).start()
@@ -72,6 +77,7 @@ fn hello() {
             },
             _msg: RegisterPanel => Some(()),
             _msg: TermEvent => Some(()),
+            _msg: PanelStatus => Some(()),
         });
 
         let watcher = mock_actor!(WatcherActor, {
@@ -94,14 +100,77 @@ fn hello() {
             false,
             HashMap::new(),
             HashMap::new(),
+            false,
         )
         .await?;
 
-        let status = commands[0].send(WaitStatus).await?;
+        let status = commands
+            .get(&"test".to_string())
+            .unwrap()
+            .send(WaitStatus)
+            .await?;
         println!("status: {:?}", status);
 
         Ok(())
     });
+}
+
+#[test]
+fn test_grim_reaper() {
+    let system = System::with_tokio_rt(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .max_blocking_threads(1)
+            .enable_all()
+            .build()
+            .unwrap()
+    });
+
+    let fut = async move {
+        let config: Config = r#"
+            test:
+                command: ls
+            longtest:
+                command: sleep 1s; echo "wake up";
+            "#
+        .parse()?;
+
+        let console = mock_actor!(ConsoleActor, {
+            msg: Output => {
+                println!("---{:?}", msg.message);
+                Some(())
+            },
+            _msg: PanelStatus => Some(()),
+            _msg: RegisterPanel => Some(()),
+            _msg: TermEvent => Some(()),
+        });
+
+        let watcher = mock_actor!(WatcherActor, {
+            _msg: WatchGlob => Some(()),
+        });
+
+        let commands = CommandActor::from_config(
+            &config,
+            console,
+            watcher,
+            env::current_dir().unwrap(),
+            false,
+            HashMap::new(),
+            false,
+        )
+        .await?;
+
+        GrimReaperActor::start_new(commands).await?;
+        Ok(())
+    };
+
+    Arbiter::current().spawn(async { fut.await.unwrap() });
+
+    let timer = std::time::SystemTime::now();
+    assert_eq!(0, system.run_with_code().unwrap());
+    let elapsed = timer.elapsed().unwrap();
+    assert!(elapsed.as_secs_f64() > 1.0);
+    assert!(elapsed.as_secs_f64() < 2.0);
 }
 
 #[test]

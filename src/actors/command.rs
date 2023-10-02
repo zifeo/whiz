@@ -527,10 +527,6 @@ impl Handler<Reload> for CommandActor {
     fn handle(&mut self, msg: Reload, _: &mut Context<Self>) -> Self::Result {
         self.ensure_stopped();
 
-        if self.death_invite.is_some() {
-            return;
-        }
-
         match &msg {
             Reload::Start => {
                 self.send_will_reload();
@@ -606,6 +602,7 @@ impl Handler<WaitStatus> for CommandActor {
         Box::pin(f)
     }
 }
+
 #[derive(Message)]
 #[rtype(result = "()")]
 struct StdoutTerminated {
@@ -647,8 +644,8 @@ impl Handler<PermaDeathInvite> for CommandActor {
 
     fn handle(&mut self, evt: PermaDeathInvite, _: &mut Context<Self>) -> Self::Result {
         self.child.poll(false).unwrap();
-        if let Some(status) = self.child.exit_status() {
-            evt.rsvp(self.op_name.clone(), status);
+        if let Child::Exited(status) = &self.child {
+            evt.rsvp(self.op_name.clone(), status.clone());
         } else {
             self.death_invite = Some(evt);
         }

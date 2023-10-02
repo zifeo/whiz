@@ -3,6 +3,9 @@ use std::collections::{HashMap, HashSet};
 use actix::prelude::*;
 use subprocess::ExitStatus;
 
+/// This is responsible for exiting whiz when all tasks are done.
+/// It `send`s it's targets `PermaDeathInvite` which and when all
+/// have been `rsvp`d, terminates the Actix runtime and thus the program.
 pub struct GrimReaperActor {
     live_invites: HashSet<String>,
     non_zero_deaths: HashMap<String, ExitStatus>,
@@ -42,6 +45,8 @@ pub struct PermaDeathInvite {
 
 impl PermaDeathInvite {
     pub fn rsvp(self, actor_name: String, exit_status: ExitStatus) {
+        // TODO: consider asserting death by recieving the target actor's
+        // `Context` and using `stop`
         // FIXME: `do_send` might fail if actor "mailbox" is full
         self.reaper_addr.do_send(InviteAccepted {
             actor_name,
@@ -81,4 +86,3 @@ impl Handler<InviteAccepted> for GrimReaperActor {
         }
     }
 }
-

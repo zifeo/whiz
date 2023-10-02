@@ -47,7 +47,7 @@ pub struct Args {
     #[clap(long)]
     pub list_jobs: bool,
 
-    /// Whiz will exit after all commands have finished executing.
+    /// Whiz will exit after all tasks have finished executing.
     #[clap(long)]
     pub exit_after: bool,
 

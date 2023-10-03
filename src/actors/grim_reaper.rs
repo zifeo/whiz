@@ -44,14 +44,19 @@ pub struct PermaDeathInvite {
 }
 
 impl PermaDeathInvite {
-    pub fn rsvp(self, actor_name: String, exit_status: ExitStatus) {
-        // TODO: consider asserting death by recieving the target actor's
-        // `Context` and using `stop`
-        // FIXME: `do_send` might fail if actor "mailbox" is full
-        self.reaper_addr.do_send(InviteAccepted {
-            actor_name,
-            exit_status,
-        });
+    pub fn rsvp<T, C>(self, actor_name: String, exit_status: ExitStatus, invitee_cx: &mut C)
+    where
+        T: Actor<Context = C> + Handler<PermaDeathInvite>,
+        <T as actix::Actor>::Context: actix::dev::ToEnvelope<T, PermaDeathInvite>,
+        C: actix::ActorContext,
+    {
+        self.reaper_addr
+            .try_send(InviteAccepted {
+                actor_name,
+                exit_status,
+            })
+            .expect("GrimReaperActor mailbox is closed or its mailbox full");
+        invitee_cx.stop();
     }
 }
 
@@ -77,8 +82,10 @@ impl Handler<InviteAccepted> for GrimReaperActor {
                     ExitStatus::Exited(code) => code as i32,
                     ExitStatus::Other(code) => code,
                     ExitStatus::Signaled(code) => code as i32,
-                    // TODO: consider erring out on Undetermined
-                    ExitStatus::Undetermined => 0,
+                    ExitStatus::Undetermined => {
+                        eprintln!("ERROR: task {_op_name} exited with Undetermined status");
+                        1
+                    }
                 };
                 System::current().stop_with_code(code);
             }

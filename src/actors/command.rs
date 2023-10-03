@@ -98,38 +98,66 @@ impl Child {
     }
 }
 
-pub struct CommandActor {
-    op_name: String,
-    operator: Task,
+pub struct CommandActorsBuilder {
+    config: Config,
     console: Addr<ConsoleAct>,
     watcher: Addr<WatcherAct>,
-    arbiter: Arbiter,
-    child: Child,
-    nexts: Vec<Addr<CommandActor>>,
-    cwd: PathBuf,
-    self_addr: Option<Addr<CommandActor>>,
-    pending_upstream: BTreeMap<String, usize>,
+    base_dir: PathBuf,
     verbose: bool,
-    started_at: DateTime<Local>,
-    env: Vec<(String, String)>,
-    pipes: Vec<Pipe>,
-    colors: Vec<ColorOption>,
-    entrypoint: Option<String>,
-    no_watch: bool,
-    death_invite: Option<PermaDeathInvite>,
+    colors_map: HashMap<String, Vec<ColorOption>>,
+    pipes_map: HashMap<String, Vec<Pipe>>,
+    watch_enabled_globally: bool,
 }
 
-impl CommandActor {
-    pub async fn from_config(
-        config: &Config,
+impl CommandActorsBuilder {
+    pub fn new(
+        config: Config,
         console: Addr<ConsoleAct>,
         watcher: Addr<WatcherAct>,
         base_dir: PathBuf,
-        verbose: bool,
-        pipes_map: HashMap<String, Vec<Pipe>>,
         colors_map: HashMap<String, Vec<ColorOption>>,
-        global_no_watch: bool,
-    ) -> Result<HashMap<String, Addr<CommandActor>>> {
+    ) -> Self {
+        Self {
+            config,
+            console,
+            watcher,
+            base_dir,
+            verbose: false,
+            pipes_map: Default::default(),
+            watch_enabled_globally: true,
+            colors_map,
+        }
+    }
+
+    pub fn pipes_map(self, pipes_map: HashMap<String, Vec<Pipe>>) -> Self {
+        Self { pipes_map, ..self }
+    }
+
+    pub fn verbose(self, toggle: bool) -> Self {
+        Self {
+            verbose: toggle,
+            ..self
+        }
+    }
+
+    pub fn globally_enable_watch(self, toggle: bool) -> Self {
+        Self {
+            watch_enabled_globally: toggle,
+            ..self
+        }
+    }
+
+    pub async fn build(self) -> Result<HashMap<String, Addr<CommandActor>>> {
+        let Self {
+            config,
+            console,
+            watcher,
+            base_dir,
+            verbose,
+            pipes_map,
+            watch_enabled_globally,
+            colors_map,
+        } = self;
         let mut shared_env = HashMap::from_iter(std::env::vars());
         shared_env.extend(lade_sdk::resolve(&config.env, &shared_env)?);
         let shared_env = lade_sdk::hydrate(shared_env, base_dir.clone()).await?;
@@ -177,8 +205,7 @@ impl CommandActor {
                 task_pipes,
                 colors,
                 op.entrypoint.clone(),
-                // TODO: consider introducing per command no_watch config
-                global_no_watch,
+                watch_enabled_globally,
             )
             .start();
 
@@ -188,10 +215,32 @@ impl CommandActor {
             commands.insert(op_name, actor);
         }
 
-        // Ok(commands.values().map(|i| i.to_owned()).collect::<Vec<_>>())
         Ok(commands)
     }
+}
 
+pub struct CommandActor {
+    op_name: String,
+    operator: Task,
+    console: Addr<ConsoleAct>,
+    watcher: Addr<WatcherAct>,
+    arbiter: Arbiter,
+    child: Child,
+    nexts: Vec<Addr<CommandActor>>,
+    cwd: PathBuf,
+    self_addr: Option<Addr<CommandActor>>,
+    pending_upstream: BTreeMap<String, usize>,
+    verbose: bool,
+    started_at: DateTime<Local>,
+    env: Vec<(String, String)>,
+    pipes: Vec<Pipe>,
+    colors: Vec<ColorOption>,
+    entrypoint: Option<String>,
+    watch: bool,
+    death_invite: Option<PermaDeathInvite>,
+}
+
+impl CommandActor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         op_name: String,
@@ -205,7 +254,7 @@ impl CommandActor {
         pipes: Vec<Pipe>,
         colors: Vec<ColorOption>,
         entrypoint: Option<String>,
-        no_watch: bool,
+        watch: bool,
     ) -> Self {
         Self {
             op_name,
@@ -224,7 +273,7 @@ impl CommandActor {
             pipes,
             colors,
             entrypoint,
-            no_watch,
+            watch,
             death_invite: None,
         }
     }
@@ -420,9 +469,13 @@ impl CommandActor {
         Ok(())
     }
 
-    fn accept_death_invite(&mut self) {
+    fn accept_death_invite(&mut self, cx: &mut Context<Self>) {
         if let Some(invite) = self.death_invite.take() {
-            invite.rsvp(self.op_name.clone(), self.child.exit_status().unwrap());
+            invite.rsvp::<Self, Context<Self>>(
+                self.op_name.clone(),
+                self.child.exit_status().unwrap(),
+                cx,
+            );
         }
     }
 }
@@ -442,7 +495,7 @@ impl Actor for CommandActor {
 
         let watches = self.operator.watch.resolve();
 
-        if !self.no_watch && !watches.is_empty() {
+        if self.watch && !watches.is_empty() {
             let mut on = GlobSetBuilder::new();
             for pattern in self.operator.watch.resolve() {
                 on.add(
@@ -612,7 +665,7 @@ struct StdoutTerminated {
 impl Handler<StdoutTerminated> for CommandActor {
     type Result = ();
 
-    fn handle(&mut self, msg: StdoutTerminated, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: StdoutTerminated, cx: &mut Self::Context) -> Self::Result {
         if msg.started_at == self.started_at {
             self.ensure_stopped();
             let exit = self.child.exit_status();
@@ -621,7 +674,7 @@ impl Handler<StdoutTerminated> for CommandActor {
                 panel_name: self.op_name.clone(),
                 status: exit,
             });
-            self.accept_death_invite();
+            self.accept_death_invite(cx);
         }
     }
 }
@@ -634,7 +687,7 @@ impl Handler<PoisonPill> for CommandActor {
     type Result = ();
 
     fn handle(&mut self, _: PoisonPill, ctx: &mut Context<Self>) -> Self::Result {
-        self.accept_death_invite();
+        self.accept_death_invite(ctx);
         ctx.stop();
     }
 }
@@ -642,10 +695,15 @@ impl Handler<PoisonPill> for CommandActor {
 impl Handler<PermaDeathInvite> for CommandActor {
     type Result = ();
 
-    fn handle(&mut self, evt: PermaDeathInvite, _: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, evt: PermaDeathInvite, cx: &mut Context<Self>) -> Self::Result {
         self.child.poll(false).unwrap();
-        if let Child::Exited(status) = &self.child {
-            evt.rsvp(self.op_name.clone(), status.clone());
+        let status = match &self.child {
+            Child::Killed => Some(ExitStatus::Other(1)),
+            Child::Exited(val) => Some(*val),
+            _ => None,
+        };
+        if let Some(status) = status {
+            evt.rsvp::<Self, Self::Context>(self.op_name.clone(), status, cx);
         } else {
             self.death_invite = Some(evt);
         }

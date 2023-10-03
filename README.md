@@ -84,23 +84,24 @@ See `whiz --help` for more information.
 | -t, --timestamp     | enable timestamps in logging |
 | -v, --verbose       | enable verbose mode          |
 | -V, --version       | print whiz version           |
+| -V, --version       | print whiz version           |
+| --watch             | globally enable/disable fs watching |
+
 
 ### Key bindings
 
-| Keys         | Action                              |
-| ------------ | ----------------------------------- |
-| l, RighArrow | go to next tab                      |
-| h, LeftArrow | go to previous tab                  |
-| k, Ctl + p   | scroll up one line                  |
-| j, Ctl + n   | scroll down one line                |
-| Ctl + u      | scroll up half page                 |
-| Ctl + d      | scroll down half page               |
-| Ctl + b      | scroll up full page                 |
-| Ctl + f      | scroll down full page               |
-| 0            | go to last tab                      |
-| 1-9          | go to the tab at the given position |
-| q, Ctl + c   | exit the program                    |
-| r            | rerun the job in the current tab    |
+| Flags               | Description                                       |
+| ------------------- | ------------------------------------------------- |
+| -f, --file \<FILE\> | Specify the config file                           |
+| -h, --help          | Print help information                            |
+| --list-jobs         | List all the available jobs                       |
+| -r, --run \<JOB\>   | Run specific jobs                                 |
+| -t, --timestamp     | Enable timestamps in logging                      |
+| -v, --verbose       | Enable verbose mode                               |
+| -V, --version       | Print whiz version                                |
+| -V, --version       | Print whiz version                                |
+| --watch             | Globally enable/disable fs watching               |
+| --exit-after        | Exit whiz after all tasks are done. Useful for CI | 
 
 ## Development
 

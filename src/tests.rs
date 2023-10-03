@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::Path;
 use std::{env, future::Future};
 
@@ -6,13 +5,12 @@ use anyhow::{Ok, Result};
 
 use subprocess::ExitStatus;
 
-use crate::actors::command::WaitStatus;
+use crate::actors::command::{CommandActorsBuilder, WaitStatus};
 use crate::actors::console::RegisterPanel;
 use crate::actors::watcher::WatchGlob;
 use crate::args::Args;
 use crate::{
     actors::{
-        command::CommandActor,
         console::{ConsoleActor, Output, PanelStatus, TermEvent},
         grim_reaper::GrimReaperActor,
         watcher::WatcherActor,
@@ -92,17 +90,10 @@ fn hello() {
             ))
             .await?;
 
-        let commands = CommandActor::from_config(
-            &config,
-            console,
-            watcher,
-            env::current_dir().unwrap(),
-            false,
-            HashMap::new(),
-            HashMap::new(),
-            false,
-        )
-        .await?;
+        let commands =
+            CommandActorsBuilder::new(config, console, watcher, env::current_dir().unwrap(), HashMap::new())
+                .build()
+                .await?;
 
         let status = commands
             .get(&"test".to_string())
@@ -153,16 +144,10 @@ fn test_grim_reaper() {
             _msg: WatchGlob => Some(()),
         });
 
-        let commands = CommandActor::from_config(
-            &config,
-            console,
-            watcher,
-            env::current_dir().unwrap(),
-            false,
-            HashMap::new(),
-            false,
-        )
-        .await?;
+        let commands =
+            CommandActorsBuilder::new(config, console, watcher, env::current_dir().unwrap())
+                .build()
+                .await?;
 
         GrimReaperActor::start_new(commands).await?;
         Ok(())

@@ -75,21 +75,6 @@ complete example.
 
 See `whiz --help` for more information.
 
-| Flags               | Description                  |
-| ------------------- | ---------------------------- |
-| -f, --file \<FILE\> | specify the config file      |
-| -h, --help          | print help information       |
-| --list-jobs         | list all the available jobs  |
-| -r, --run \<JOB\>   | run specific jobs            |
-| -t, --timestamp     | enable timestamps in logging |
-| -v, --verbose       | enable verbose mode          |
-| -V, --version       | print whiz version           |
-| -V, --version       | print whiz version           |
-| --watch             | globally enable/disable fs watching |
-
-
-### Key bindings
-
 | Flags               | Description                                       |
 | ------------------- | ------------------------------------------------- |
 | -f, --file \<FILE\> | Specify the config file                           |
@@ -102,6 +87,24 @@ See `whiz --help` for more information.
 | -V, --version       | Print whiz version                                |
 | --watch             | Globally enable/disable fs watching               |
 | --exit-after        | Exit whiz after all tasks are done. Useful for CI | 
+
+
+### Key bindings
+
+| Keys         | Action                              |
+| ------------ | ----------------------------------- |
+| l, RighArrow | go to next tab                      |
+| h, LeftArrow | go to previous tab                  |
+| k, Ctl + p   | scroll up one line                  |
+| j, Ctl + n   | scroll down one line                |
+| Ctl + u      | scroll up half page                 |
+| Ctl + d      | scroll down half page               |
+| Ctl + b      | scroll up full page                 |
+| Ctl + f      | scroll down full page               |
+| 0            | go to last tab                      |
+| 1-9          | go to the tab at the given position |
+| q, Ctl + c   | exit the program                    |
+| r            | rerun the job in the current tab    |
 
 ## Development
 

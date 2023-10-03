@@ -1,6 +1,7 @@
 use actix::prelude::*;
 
-use globset::GlobSet;
+use glob_match::glob_match;
+
 use ignore::gitignore::GitignoreBuilder;
 use notify::event::ModifyKind;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -78,8 +79,8 @@ impl Actor for WatcherActor {
 #[rtype(result = "()")]
 pub struct WatchGlob {
     pub command: Addr<CommandActor>,
-    pub on: GlobSet,
-    pub off: GlobSet,
+    pub on: Vec<String>,  // Storing raw glob patterns instead of GlobSet
+    pub off: Vec<String>, // Storing raw glob patterns instead of GlobSet
 }
 
 impl Handler<WatchGlob> for WatcherActor {
@@ -105,8 +106,10 @@ impl Handler<WatchEvent> for WatcherActor {
                 .iter()
                 .filter(|path| {
                     !self.ignore.contains(path.as_path())
-                        && glob.on.is_match(path)
-                        && !glob.off.is_match(path)
+                     // Using glob_match to check for matching paths
+                     && glob.on.iter().any(|pattern| glob_match(pattern, &path.display().to_string()))
+                     && glob.off.iter().all(|pattern| !glob_match(pattern, &path.display().to_string()))
+                        
                 })
                 .collect::<Vec<_>>();
 

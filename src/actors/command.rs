@@ -6,7 +6,7 @@ use chrono::{DateTime, Local};
 use subprocess::{Exec, ExitStatus, Popen, Redirection};
 
 use dotenv_parser::parse_dotenv;
-use globset::{Glob, GlobSetBuilder};
+
 use path_absolutize::*;
 use std::collections::BTreeMap;
 use std::fs;
@@ -172,7 +172,7 @@ impl CommandActor {
             .start();
 
             if op.depends_on.resolve().is_empty() {
-                actor.do_send(Reload::Start)
+                actor.do_send(Reload::Start);
             }
             commands.insert(op_name, actor);
         }
@@ -240,13 +240,13 @@ impl CommandActor {
     }
 
     fn send_reload(&self) {
-        for next in (self.nexts).iter() {
+        for next in self.nexts.iter() {
             next.do_send(Reload::Op(self.op_name.clone()));
         }
     }
 
     fn send_will_reload(&self) {
-        for next in (self.nexts).iter() {
+        for next in self.nexts.iter() {
             next.do_send(WillReload {
                 op_name: self.op_name.clone(),
             });
@@ -417,40 +417,39 @@ impl Actor for CommandActor {
         let watches = self.operator.watch.resolve();
 
         if !watches.is_empty() {
-            let mut on = GlobSetBuilder::new();
-            for pattern in self.operator.watch.resolve() {
-                on.add(
-                    Glob::new(
-                        &self
-                            .cwd
-                            .join(pattern)
-                            .absolutize()
-                            .unwrap()
-                            .to_string_lossy(),
-                    )
-                    .unwrap(),
-                );
-            }
+            // Store raw patterns in a Vec<String>
+            let on: Vec<String> = watches
+                .iter()
+                .map(|pattern| {
+                    self.cwd
+                        .join(pattern)
+                        .absolutize()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
+                })
+                .collect();
 
-            let mut off = GlobSetBuilder::new();
-            for pattern in self.operator.ignore.resolve() {
-                off.add(
-                    Glob::new(
-                        &self
-                            .cwd
-                            .join(pattern)
-                            .absolutize()
-                            .unwrap()
-                            .to_string_lossy(),
-                    )
-                    .unwrap(),
-                );
-            }
+            let off: Vec<String> = self
+                .operator
+                .ignore
+                .resolve()
+                .iter()
+                .map(|pattern| {
+                    self.cwd
+                        .join(pattern)
+                        .absolutize()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
+                })
+                .collect();
 
+            // Note: Instead of GlobSet, we're sending a Vec<String> with raw patterns
             let glob = WatchGlob {
                 command: ctx.address(),
-                on: on.build().unwrap(),
-                off: off.build().unwrap(),
+                on,
+                off,
             };
 
             self.watcher.do_send(glob);
@@ -563,14 +562,14 @@ impl Handler<WaitStatus> for CommandActor {
 
     fn handle(&mut self, _: WaitStatus, ctx: &mut Self::Context) -> Self::Result {
         let addr = ctx.address();
-        let f = async move {
+        let f = (async move {
             loop {
                 if let Some(status) = addr.send(GetStatus).await.unwrap().unwrap() {
                     return status;
                 }
                 sleep(Duration::from_millis(20)).await;
             }
-        }
+        })
         .into_actor(self)
         .map(|res, _act, _ctx| Ok(res));
         Box::pin(f)

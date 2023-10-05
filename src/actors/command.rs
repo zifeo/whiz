@@ -1,4 +1,4 @@
-use actix::clock::sleep;
+use actix::clock::{sleep, timeout};
 use actix::prelude::*;
 
 use anyhow::{Context as ErrorContext, Result};
@@ -476,11 +476,7 @@ impl CommandActor {
                 Child::Exited(val) => *val,
                 child => panic!("invalid death invite acceptance: {child:?}"),
             };
-            invite.rsvp::<Self, Context<Self>>(
-                self.op_name.clone(),
-                status,
-                cx,
-            );
+            invite.rsvp::<Self, Context<Self>>(self.op_name.clone(), status, cx);
         }
     }
 }
@@ -668,19 +664,44 @@ struct StdoutTerminated {
 }
 
 impl Handler<StdoutTerminated> for CommandActor {
-    type Result = ();
+    type Result = ResponseActFuture<Self, ()>;
 
     fn handle(&mut self, msg: StdoutTerminated, cx: &mut Self::Context) -> Self::Result {
-        if msg.started_at == self.started_at {
-            self.ensure_stopped();
-            let exit = self.child.exit_status();
-
-            self.console.do_send(PanelStatus {
-                panel_name: self.op_name.clone(),
+        // early exit
+        if msg.started_at != self.started_at {
+            return Box::pin(async {}.into_actor(self).map(|_, _, _| ()));
+        }
+        let addr = cx.address();
+        // since there's a chance that child might not be done by this point
+        // wait for it die for a maximum of 1 seconds
+        // polling every 20 millis
+        // before pulling the plug
+        let fut = timeout(Duration::from_secs(1), async move {
+            loop {
+                if let Some(status) = addr.send(GetStatus).await.unwrap().unwrap() {
+                    return status;
+                }
+                sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .into_actor(self)
+        .map(|res, act, cx| {
+            let exit = if let Ok(status) = res {
+                act.send_reload(); // signal any dependents, this boy's goin down
+                Some(status)
+            } else {
+                // timeout and child is not still dead
+                // pull the plug
+                act.ensure_stopped();
+                act.child.exit_status()
+            };
+            act.console.do_send(PanelStatus {
+                panel_name: act.op_name.clone(),
                 status: exit,
             });
-            self.accept_death_invite(cx);
-        }
+            act.accept_death_invite(cx);
+        });
+        Box::pin(fut)
     }
 }
 

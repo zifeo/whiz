@@ -127,3 +127,4 @@ friends_conversation:
     pipe:
         # Dynamic naming for virtual tabs generation
         '^\[message\] (?P<name>[a-zA-Z]+):.*$': whiz://talker_${name}
+

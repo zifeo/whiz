@@ -4,11 +4,14 @@ use chrono::prelude::*;
 use crossterm::event::KeyEvent;
 use ratatui::backend::Backend;
 use ratatui::layout::Rect;
+use ratatui::prelude::Alignment;
 use ratatui::text::Line;
+use ratatui::widgets::{List, ListItem, ListState};
 use ratatui::Frame;
+use std::borrow::Cow;
 use std::rc::Rc;
-use std::str;
 use std::{cmp::min, collections::HashMap, io};
+use std::{str, usize};
 use subprocess::ExitStatus;
 
 use ratatui::{
@@ -28,6 +31,37 @@ use crossterm::{
 };
 
 use super::command::{CommandActor, PoisonPill, Reload};
+
+const MENU_WIDTH: u16 = 30;
+const MAX_CHARS: usize = (MENU_WIDTH - 6) as usize;
+
+enum LayoutDirection {
+    Horizontal,
+    Vertical,
+}
+
+impl LayoutDirection {
+    fn get_opposite_orientation(&self) -> Self {
+        match self {
+            Self::Horizontal => Self::Vertical,
+            Self::Vertical => Self::Horizontal,
+        }
+    }
+}
+
+enum AppMode {
+    Menu,
+    View,
+}
+
+impl AppMode {
+    fn get_opposite_mode(&self) -> Self {
+        match self {
+            Self::View => Self::Menu,
+            Self::Menu => Self::View,
+        }
+    }
+}
 
 pub struct Panel {
     logs: Vec<(String, Style)>,
@@ -56,12 +90,26 @@ pub struct ConsoleActor {
     arbiter: Arbiter,
     panels: HashMap<String, Panel>,
     timestamp: bool,
+    layout_direction: LayoutDirection,
+    mode: AppMode,
+    list_state: ListState,
 }
 
-pub fn chunks<T: Backend>(f: &Frame<T>) -> Rc<[Rect]> {
+fn chunks<T: Backend>(mode: &AppMode, direction: &LayoutDirection, f: &Frame<T>) -> Rc<[Rect]> {
+    let chunks_constraints = match mode {
+        AppMode::Menu => match direction {
+            LayoutDirection::Horizontal => vec![Constraint::Min(0), Constraint::Length(3)],
+            LayoutDirection::Vertical => vec![Constraint::Min(0), Constraint::Length(MENU_WIDTH)],
+        },
+        AppMode::View => vec![Constraint::Min(0)],
+    };
+    let direction = match direction {
+        LayoutDirection::Horizontal => Direction::Vertical,
+        LayoutDirection::Vertical => Direction::Horizontal,
+    };
     Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
+        .direction(direction)
+        .constraints(chunks_constraints)
         .split(f.size())
 }
 
@@ -77,6 +125,9 @@ impl ConsoleActor {
             arbiter: Arbiter::new(),
             panels: HashMap::default(),
             timestamp,
+            mode: AppMode::Menu,
+            layout_direction: LayoutDirection::Horizontal,
+            list_state: ListState::default().with_selected(Some(0)),
         }
     }
 
@@ -104,7 +155,7 @@ impl ConsoleActor {
 
     pub fn get_log_height(&mut self) -> u16 {
         let frame = self.terminal.get_frame();
-        chunks(&frame)[0].height
+        chunks(&self.mode, &self.layout_direction, &frame)[0].height
     }
 
     pub fn go_to(&mut self, panel_index: usize) {
@@ -122,10 +173,12 @@ impl ConsoleActor {
 
     pub fn next(&mut self) {
         self.index = self.order[(self.idx() + 1) % self.order.len()].clone();
+        self.list_state.select(Some(self.idx()))
     }
 
     pub fn previous(&mut self) {
         self.index = self.order[(self.idx() + self.order.len() - 1) % self.order.len()].clone();
+        self.list_state.select(Some(self.idx()))
     }
 
     fn clean(&mut self) {
@@ -143,7 +196,7 @@ impl ConsoleActor {
         if let Some(focused_panel) = &self.panels.get(&self.index) {
             self.terminal
                 .draw(|f| {
-                    let chunks = chunks(f);
+                    let chunks = chunks(&self.mode, &self.layout_direction, f);
                     let logs = &focused_panel.logs;
 
                     let log_height = chunks[0].height;
@@ -165,15 +218,32 @@ impl ConsoleActor {
                         .scroll((maximum_scroll - min(maximum_scroll, focused_panel.shift), 0));
                     f.render_widget(paragraph, chunks[0]);
 
-                    let /*mut*/ titles: Vec<Line> = self
+                    //Format titles
+                    let titles: Vec<Line> = self
                         .order
                         .iter()
                         .map(|panel| {
-                            let span = self.panels.get(panel).map(|p| match p.status {
-                                Some(ExitStatus::Exited(0)) => Span::styled(format!("{}.", panel), Style::default().fg(Color::Green)),
-                                Some(_) => Span::styled(format!("{}!", panel), Style::default().fg(Color::Red)),
-                                None => Span::styled(format!("{}*", panel), Style::default()),
-                            }).unwrap_or_else(|| Span::styled(panel, Style::default()));
+                            let mut span = self
+                                .panels
+                                .get(panel)
+                                .map(|p| match p.status {
+                                    Some(ExitStatus::Exited(0)) => Span::styled(
+                                        format!("{}.", panel),
+                                        Style::default().fg(Color::Green),
+                                    ),
+                                    Some(_) => Span::styled(
+                                        format!("{}!", panel),
+                                        Style::default().fg(Color::Red),
+                                    ),
+                                    None => Span::styled(format!("{}*", panel), Style::default()),
+                                })
+                                .unwrap_or_else(|| Span::styled(panel, Style::default()));
+                            // Replace the titles whoms length is greater than MAX_CHARS with an
+                            // ellipse
+                            span = Span::styled(
+                                ellipse_if_too_long(span.content).into_owned(),
+                                span.style,
+                            );
                             Line::from(span)
                         })
                         .collect();
@@ -186,19 +256,56 @@ impl ConsoleActor {
                         focus.lines,
                         f.size().width,
                     ))));
+
                     */
-                    let tabs = Tabs::new(titles)
-                        .block(Block::default().borders(Borders::ALL))
-                        .select(idx)
-                        .highlight_style(
-                            Style::default()
-                                .add_modifier(Modifier::BOLD)
-                                .bg(Color::DarkGray),
-                        );
-                    f.render_widget(tabs, chunks[1]);
+                    match self.mode {
+                        AppMode::Menu => {
+                            match self.layout_direction {
+                                LayoutDirection::Horizontal => {
+                                    let tabs = Tabs::new(titles)
+                                        .block(Block::default().borders(Borders::ALL))
+                                        .select(idx)
+                                        .highlight_style(
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .bg(Color::DarkGray),
+                                        );
+                                    f.render_widget(tabs, chunks[1]);
+                                }
+                                LayoutDirection::Vertical => {
+                                    let list = List::new(
+                                        titles
+                                            .into_iter()
+                                            .map(ListItem::new)
+                                            .collect::<Vec<ListItem>>(),
+                                    )
+                                    .block(
+                                        Block::default()
+                                            .borders(Borders::ALL)
+                                            .title("Task List")
+                                            .title_alignment(Alignment::Center),
+                                    )
+                                    .highlight_style(
+                                        Style::default()
+                                            .bg(Color::DarkGray)
+                                            .add_modifier(Modifier::BOLD),
+                                    );
+                                    f.render_stateful_widget(list, chunks[1], &mut self.list_state)
+                                }
+                            };
+                        }
+                        AppMode::View => {}
+                    };
                 })
                 .unwrap();
         }
+    }
+
+    pub fn switch_layout(&mut self) {
+        self.layout_direction = self.layout_direction.get_opposite_orientation();
+    }
+    pub fn switch_mode(&mut self) {
+        self.mode = self.mode.get_opposite_mode();
     }
 }
 
@@ -298,6 +405,8 @@ impl Handler<TermEvent> for ConsoleActor {
                             focused_panel.command.do_send(Reload::Manual);
                         }
                     }
+                    KeyCode::Tab => self.switch_layout(),
+                    KeyCode::Char('m') => self.switch_mode(),
                     KeyCode::Right | KeyCode::Char('l') => {
                         self.next();
                     }
@@ -369,6 +478,17 @@ impl Output {
 fn wrapped_lines(message: &String, width: u16) -> u16 {
     let clean = strip_ansi_escapes::strip(message);
     textwrap::wrap(str::from_utf8(&clean).unwrap(), width as usize).len() as u16
+}
+
+// Replace the character that are max that MAX_CHARS with an ellipse ...
+fn ellipse_if_too_long(task_title: Cow<'_, str>) -> Cow<str> {
+    if task_title.len() >= MAX_CHARS {
+        let mut task_title = task_title.to_string();
+        task_title.replace_range(MAX_CHARS.., "...");
+        Cow::Owned(task_title.to_string())
+    } else {
+        task_title
+    }
 }
 
 /// Formats a message with a timestamp in `"{timestamp}  {message}"`.

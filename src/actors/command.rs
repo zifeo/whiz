@@ -471,9 +471,14 @@ impl CommandActor {
 
     fn accept_death_invite(&mut self, cx: &mut Context<Self>) {
         if let Some(invite) = self.death_invite.take() {
+            let status = match &self.child {
+                Child::Killed => ExitStatus::Other(1),
+                Child::Exited(val) => *val,
+                child => panic!("invalid death invite acceptance: {child:?}"),
+            };
             invite.rsvp::<Self, Context<Self>>(
                 self.op_name.clone(),
-                self.child.exit_status().unwrap(),
+                status,
                 cx,
             );
         }

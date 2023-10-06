@@ -1,4 +1,4 @@
-use actix::clock::{sleep, timeout};
+use actix::clock::sleep;
 use actix::prelude::*;
 
 use anyhow::{Context as ErrorContext, Result};
@@ -82,6 +82,30 @@ impl Child {
                     Ok(true)
                 }
                 None => Ok(false),
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn wait_or_kill(&mut self, dur: Duration) -> Result<bool> {
+        if let Child::Process(p) = self {
+            match p.wait_timeout(dur)? {
+                Some(status) => {
+                    *self = Child::Exited(status);
+                    Ok(true)
+                }
+                None => {
+                    p.terminate()?;
+                    p.kill()?;
+                    let _status = p.wait()?;
+                    if p.wait_timeout(Duration::from_millis(500))?.is_none() {
+                        p.kill()?;
+                        p.wait()?;
+                    }
+                    *self = Self::Killed;
+                    Ok(true)
+                }
             }
         } else {
             Ok(false)
@@ -664,44 +688,27 @@ struct StdoutTerminated {
 }
 
 impl Handler<StdoutTerminated> for CommandActor {
-    type Result = ResponseActFuture<Self, ()>;
+    type Result = ();
 
     fn handle(&mut self, msg: StdoutTerminated, cx: &mut Self::Context) -> Self::Result {
-        // early exit
-        if msg.started_at != self.started_at {
-            return Box::pin(async {}.into_actor(self).map(|_, _, _| ()));
-        }
-        let addr = cx.address();
-        // since there's a chance that child might not be done by this point
-        // wait for it die for a maximum of 1 seconds
-        // polling every 20 millis
-        // before pulling the plug
-        let fut = timeout(Duration::from_secs(1), async move {
-            loop {
-                if let Some(status) = addr.send(GetStatus).await.unwrap().unwrap() {
-                    return status;
-                }
-                sleep(Duration::from_millis(20)).await;
+        if msg.started_at == self.started_at {
+            // since there's a chance that child might not be done by this point
+            // wait for it die for a maximum of 1 seconds
+            // before pulling the plug
+            if self
+                .child
+                .wait_or_kill(Duration::from_millis(1000))
+                .unwrap()
+            {
+                self.send_reload();
             }
-        })
-        .into_actor(self)
-        .map(|res, act, cx| {
-            let exit = if let Ok(status) = res {
-                act.send_reload(); // signal any dependents, this boy's goin down
-                Some(status)
-            } else {
-                // timeout and child is not still dead
-                // pull the plug
-                act.ensure_stopped();
-                act.child.exit_status()
-            };
-            act.console.do_send(PanelStatus {
-                panel_name: act.op_name.clone(),
+            let exit = self.child.exit_status();
+            self.console.do_send(PanelStatus {
+                panel_name: self.op_name.clone(),
                 status: exit,
             });
-            act.accept_death_invite(cx);
-        });
-        Box::pin(fut)
+            self.accept_death_invite(cx);
+        }
     }
 }
 

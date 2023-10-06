@@ -122,7 +122,7 @@ fn test_grim_reaper() {
             test:
                 command: ls
             long_test_dep:
-                command: sleep 1s; echo "wake up";
+                command: sleep 1; echo "wake up";
             long_test:
                 command: echo "my que to enter"
                 depends_on:
@@ -158,7 +158,10 @@ fn test_grim_reaper() {
     let timer = std::time::SystemTime::now();
     assert_eq!(0, system.run_with_code().unwrap());
     let elapsed = timer.elapsed().unwrap();
-    assert!(elapsed.as_secs_f64() > 1.0);
+    assert!(
+        elapsed.as_millis() >= 1000,
+        "test took less than a second: {elapsed:?}"
+    );
 }
 
 #[test]

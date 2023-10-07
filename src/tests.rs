@@ -118,35 +118,15 @@ fn test_grim_reaper() {
     });
 
     let fut = async move {
-        let config_raw = {
-            #[cfg(not(target_os = "windows"))]
-            {
-                r#"
+        let config_raw =r#"
 test:
-    command: ls
+    command: python3 -c 'print("hello whiz")'
 long_test_dep:
-    command: sleep 1; echo "wake up";
+    command: python3 -c 'import time; time.sleep(1); print("wake up")'
 long_test:
-    command: echo "my que to enter"
+    command: python3 -c 'print("my que to enter")'
     depends_on:
-        - long_test_dep
-            "#
-            }
-
-            #[cfg(target_os = "windows")]
-            {
-                r#"
-test:
-    command: dir
-long_test_dep:
-    command: PING 1.1.1.2 -n 1 -w 1000 >NUL && echo "wake up"
-long_test:
-    command: echo "my que to enter"
-    depends_on:
-        - long_test_dep
-            "#
-            }
-        };
+        - long_test_dep"#;
         let config: Config = config_raw.parse()?;
 
         let console = mock_actor!(ConsoleActor, {

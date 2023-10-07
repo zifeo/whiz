@@ -139,7 +139,7 @@ long_test:
 test:
     command: dir
 long_test_dep:
-    command: TIMEOUT /T 1 && echo "wake up"
+    command: PING 1.1.1.2 -n 1 -w 1000 >NUL && echo "wake up"
 long_test:
     command: echo "my que to enter"
     depends_on:

@@ -17,6 +17,7 @@ use whiz::{
     global_config::GlobalConfig,
     utils::recurse_config_file,
 };
+mod graph;
 
 use whiz::args::Args;
 
@@ -147,6 +148,21 @@ async fn run(args: Args) -> Result<()> {
     if args.list_jobs {
         let formatted_list_of_jobs = config.get_formatted_list_of_jobs();
         println!("List of jobs:\n{formatted_list_of_jobs}");
+        return Ok(());
+    }
+
+    if args.graph {
+        let filtered_tasks: Vec<graph::Task> = config
+            .ops
+            .into_iter()
+            .map(|task| graph::Task {
+                name: task.0.to_owned(),
+                depends_on: task.1.depends_on.resolve(),
+            })
+            .collect();
+        graph::draw_graph(filtered_tasks, args.boxed)
+            .map_err(|err| anyhow!("error visualizing graph: {}", err))?;
+        System::current().stop_with_code(0);
         return Ok(());
     }
 

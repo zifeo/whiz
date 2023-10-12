@@ -46,4 +46,22 @@ pub struct Args {
     /// List all the jobs set in the config file
     #[clap(long)]
     pub list_jobs: bool,
+
+    ///Gives a graphic representation of the dependencies
+    #[clap(long)]
+    pub graph: bool,
+
+    /// Outputs the grap in box format
+    #[clap(long)]
+    pub boxed: bool,
 }
+
+// #[derive(Subcommand, Debug)]
+// enum
+//  Graph {
+//     #[clap(long)]
+//     pub graph: bool,
+//
+//     #[clap(long)]
+//     pub ascii: bool,
+// }

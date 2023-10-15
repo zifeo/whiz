@@ -1,5 +1,4 @@
 use actix::prelude::*;
-use ansi_to_tui::IntoText;
 use chrono::prelude::*;
 use crossterm::event::KeyEvent;
 use ratatui::backend::Backend;
@@ -27,6 +26,8 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
+use crate::config::color::{ColorOption, Colorizer};
+
 use super::command::{CommandActor, PoisonPill, Reload};
 
 pub struct Panel {
@@ -35,16 +36,18 @@ pub struct Panel {
     shift: u16,
     command: Addr<CommandActor>,
     status: Option<ExitStatus>,
+    colors: Vec<ColorOption>,
 }
 
 impl Panel {
-    pub fn new(command: Addr<CommandActor>) -> Self {
+    pub fn new(command: Addr<CommandActor>, colors: Vec<ColorOption>) -> Self {
         Self {
             logs: Vec::default(),
             lines: 0,
             shift: 0,
             command,
             status: None,
+            colors,
         }
     }
 }
@@ -151,10 +154,9 @@ impl ConsoleActor {
 
                     let lines: Vec<Line> = logs
                         .iter()
-                        .flat_map(|l| {
-                            let mut t = l.0.into_text().unwrap();
-                            t.patch_style(l.1);
-                            t.lines
+                        .flat_map(|(str, base_style)| {
+                            let colorizer = Colorizer::new(&focused_panel.colors, *base_style);
+                            colorizer.patch_text(str)
                         })
                         .collect();
 
@@ -402,6 +404,7 @@ impl Handler<Output> for ConsoleActor {
 pub struct RegisterPanel {
     pub name: String,
     pub addr: Addr<CommandActor>,
+    pub colors: Vec<ColorOption>,
 }
 
 impl Handler<RegisterPanel> for ConsoleActor {
@@ -409,7 +412,8 @@ impl Handler<RegisterPanel> for ConsoleActor {
 
     fn handle(&mut self, msg: RegisterPanel, _: &mut Context<Self>) -> Self::Result {
         if !self.panels.contains_key(&msg.name) {
-            self.panels.insert(msg.name.clone(), Panel::new(msg.addr));
+            let new_panel = Panel::new(msg.addr, msg.colors);
+            self.panels.insert(msg.name.clone(), new_panel);
         }
         if !self.order.contains(&msg.name) {
             self.order.push(msg.name);

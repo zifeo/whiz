@@ -140,6 +140,10 @@ async fn run(args: Args) -> Result<()> {
         .get_pipes_map()
         .map_err(|err| anyhow!("dag error: {}", err))?;
 
+    let colors_map = config
+        .get_colors_map()
+        .map_err(|err| anyhow!("colors error: {}", err))?;
+
     config
         .filter_jobs(&args.run)
         .map_err(|err| anyhow!("argument error: {}", err))?;
@@ -162,6 +166,7 @@ async fn run(args: Args) -> Result<()> {
         base_dir.clone(),
         args.verbose,
         pipes_map,
+        colors_map,
     )
     .await
     .map_err(|err| anyhow!("error spawning commands: {}", err))?;

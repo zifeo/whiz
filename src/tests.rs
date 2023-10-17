@@ -120,11 +120,14 @@ fn test_grim_reaper() {
     let fut = async move {
         let config_raw =r#"
 test:
-    command: python3 -c 'print("hello whiz")'
+    entrypoint: 'python3 -c'
+    command: 'print("hello whiz")'
 long_test_dep:
-    command: python3 -c 'import time; time.sleep(1); print("wake up")'
+    entrypoint: 'python3 -c'
+    command: 'import time; time.sleep(1); print("wake up")'
 long_test:
-    command: python3 -c 'print("my que to enter")'
+    entrypoint: 'python3 -c'
+    command: 'print("my que to enter")'
     depends_on:
         - long_test_dep"#;
         let config: Config = config_raw.parse()?;

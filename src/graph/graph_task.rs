@@ -122,24 +122,34 @@ impl Task {
 
 #[cfg(test)]
 mod helpers_tests {
-    use std::collections::HashMap;
-
     use super::{Graph, Task};
+    use std::collections::HashMap;
+    //
+    //Test helpers
+    type TestInputTask = (&'static str, &'static [&'static str]);
+    impl Task {
+        pub fn from_formatted(formatted_tasks: &[TestInputTask]) -> Vec<Task> {
+            formatted_tasks.iter().map(|t| Task::from(*t)).collect()
+        }
+    }
+    impl From<TestInputTask> for Task {
+        fn from(value: TestInputTask) -> Self {
+            Task {
+                name: value.0.to_owned(),
+                depends_on: value
+                    .1
+                    .iter()
+                    .map(|refer| refer.to_string())
+                    .collect::<Vec<String>>(),
+            }
+        }
+    }
+
     #[test]
     fn test_split_tasks() {
-        let tasks = vec![
-            ("once".to_owned(), vec![]),
-            ("once_b".to_owned(), vec!["once".to_owned()]),
-            ("third_task".to_owned(), vec![]),
-        ]
-        .to_owned();
-        let task_vec: Vec<Task> = tasks
-            .iter()
-            .map(|task| Task {
-                name: task.0.to_owned(),
-                depends_on: task.1.clone(),
-            })
-            .collect();
+        let input: &[TestInputTask] = &[("once", &[]), ("once_b", &["once"]), ("third_task", &[])];
+        let task_vec: Vec<Task> = Task::from_formatted(input);
+
         assert_eq!(
             Task::split_tasks(&task_vec).0.get(0).unwrap(),
             &task_vec.get(2).unwrap()
@@ -148,26 +158,16 @@ mod helpers_tests {
 
     #[test]
     fn split_multiple_tasks() {
-        let tasks_vec = vec![
-            ("once".to_owned(), vec![]),
-            ("once_b".to_owned(), vec!["once".to_owned()]),
-            ("third_task".to_owned(), vec![]),
-            (
-                "once_c".to_owned(),
-                vec!["once".to_owned(), "once_b".to_owned()],
-            ),
-            ("speedy".to_owned(), vec![]),
-            ("err".to_owned(), vec![]),
+        let input: &[TestInputTask] = &[
+            ("once", &[]),
+            ("once_b", &["once"]),
+            ("third_task", &[]),
+            ("once_c", &["once", "once_b"]),
+            ("speedy", &[]),
+            ("err", &[]),
         ];
 
-        let tasks: Vec<Task> = tasks_vec
-            .into_iter()
-            .map(|task| Task {
-                name: task.0.clone(),
-                depends_on: task.1.clone(),
-            })
-            .collect();
-
+        let tasks: Vec<Task> = Task::from_formatted(input);
         let (indipendent_tasks, dependent_tasks) = Task::split_tasks(&tasks);
         assert_eq!(
             indipendent_tasks,
@@ -189,13 +189,36 @@ mod helpers_tests {
 
     #[test]
     fn split_bigger_list() {
-        unimplemented!();
-        // unimplemented here. Need to include additional test file in the repo...
-        let input = "tests/input/big_list.yaml";
-        // let big_list = Task::from_file(input).unwrap();
-        let big_list = vec![];
-        let (indipendent, _) = Task::split_tasks(&big_list);
-        &[
+        let input: &[TestInputTask] = &[
+            ("2.2_task", &["1.4_task"]),
+            ("0.8_task", &[]),
+            ("1.3_task", &["0.6_task"]),
+            (
+                "1.4_task",
+                &["0.6_task", "0.7_task", "0.8_task", "0.9_task", "0.10_task"],
+            ),
+            ("0.5_task", &[]),
+            ("0.3_task", &[]),
+            ("0.2_task", &[]),
+            ("1.1_task", &["0.2_task"]),
+            ("0.7_task", &[]),
+            ("0.6_task", &[]),
+            ("0.11_task", &[]),
+            (
+                "1.2_task",
+                &["0.2_task", "0.3_task", "0.4_task", "0.6_task", "0.10_task"],
+            ),
+            ("1.5_task", &["0.7_task"]),
+            ("0.9_task", &[]),
+            ("0.4_task", &[]),
+            ("2.1_task", &["1.4_task", "1.5_task"]),
+            ("0.10_task", &[]),
+            ("0.1_task", &[]),
+        ];
+        let tasks = Task::from_formatted(input);
+
+        let (indipendent, _) = Task::split_tasks(&tasks);
+        [
             Task {
                 name: "0.1_task".into(),
                 depends_on: vec![],
@@ -248,10 +271,4 @@ mod helpers_tests {
         assert_eq!(dependencies_for_two, Some(vec![(1, 2)]));
         assert_eq!(dependencies_for_three, Some(vec![(1, 3), (2, 3)]));
     }
-
-    // #[test] fn big_list_dep_list_to_nodes() {
-    //
-    //     let _input = "tests/input/big_list.yaml";
-    //     unimplemented!()
-    // }
 }

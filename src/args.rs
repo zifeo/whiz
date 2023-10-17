@@ -3,12 +3,19 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug, Clone)]
 pub struct Upgrade {
     /// Upgrade to specific version (e.g. 1.0.0)
-    #[clap(long)]
+    #[arg(long)]
     pub version: Option<String>,
 
     /// Do not ask for version confirmation
-    #[clap(short, long, default_value_t = false)]
+    #[arg(short, long, default_value_t = false)]
     pub yes: bool,
+}
+
+#[derive(Parser, Debug, Clone)]
+pub struct Graph {
+    /// Draw the line using box-drawing character
+    #[arg(long, short, default_value_t = false)]
+    pub boxed: bool,
 }
 
 /// Set of subcommands.
@@ -16,52 +23,35 @@ pub struct Upgrade {
 pub enum Command {
     /// Upgrade whiz.
     Upgrade(Upgrade),
+    /// Print the graphical ascii representation
+    Graph(Graph),
+    /// List all the jobs set in the config file
+    ListJobs,
 }
 
 #[derive(Parser, Debug)]
-#[clap(name="whiz", about, long_about = None, disable_version_flag = true, disable_help_flag = true)]
+#[command(
+    name = "whiz",
+    about,
+    long_about= None,
+)]
 pub struct Args {
-    #[clap(long, value_parser)]
+    #[arg(long)]
     pub version: bool,
 
-    #[clap(short, long, value_parser)]
-    pub help: bool,
-
-    #[clap(subcommand)]
+    #[command(subcommand)]
     pub command: Option<Command>,
 
-    #[clap(short, long, default_value = "whiz.yaml")]
+    #[arg(short, long, default_value = "whiz.yaml")]
     pub file: String,
 
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub verbose: bool,
 
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub timestamp: bool,
 
     /// Run specific jobs
-    #[clap(short, long, value_name = "JOB")]
+    #[arg(short, long, value_name = "JOB")]
     pub run: Vec<String>,
-
-    /// List all the jobs set in the config file
-    #[clap(long)]
-    pub list_jobs: bool,
-
-    ///Gives a graphic representation of the dependencies
-    #[clap(long)]
-    pub graph: bool,
-
-    /// Outputs the grap in box format
-    #[clap(long)]
-    pub boxed: bool,
 }
-
-// #[derive(Subcommand, Debug)]
-// enum
-//  Graph {
-//     #[clap(long)]
-//     pub graph: bool,
-//
-//     #[clap(long)]
-//     pub ascii: bool,
-// }

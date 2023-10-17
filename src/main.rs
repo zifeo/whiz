@@ -1,14 +1,12 @@
-use std::eprintln;
-
 use actix::prelude::*;
 use anyhow::anyhow;
 use anyhow::Ok;
 use anyhow::Result;
 use chrono::{Duration, Utc};
-use clap::CommandFactory;
 use clap::Parser;
 use self_update::{backends::github::Update, cargo_crate_version, update::UpdateStatus};
 use semver::Version;
+use std::eprintln;
 use tokio::time::{sleep, Duration as TokioDuration};
 use whiz::{
     actors::{command::CommandActor, console::ConsoleActor, watcher::WatcherActor},
@@ -57,15 +55,10 @@ async fn upgrade_check() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let args = Args::try_parse()?;
+    let args = Args::parse();
 
     if args.version {
         println!("whiz {}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
-    }
-
-    if args.help {
-        Args::command().print_help()?;
         return Ok(());
     }
 
@@ -145,13 +138,13 @@ async fn run(args: Args) -> Result<()> {
         .filter_jobs(&args.run)
         .map_err(|err| anyhow!("argument error: {}", err))?;
 
-    if args.list_jobs {
+    if let Some(Command::ListJobs) = args.command {
         let formatted_list_of_jobs = config.get_formatted_list_of_jobs();
         println!("List of jobs:\n{formatted_list_of_jobs}");
         return Ok(());
     }
 
-    if args.graph {
+    if let Some(Command::Graph(opts)) = args.command {
         let filtered_tasks: Vec<graph::Task> = config
             .ops
             .into_iter()
@@ -160,10 +153,19 @@ async fn run(args: Args) -> Result<()> {
                 depends_on: task.1.depends_on.resolve(),
             })
             .collect();
-        graph::draw_graph(filtered_tasks, args.boxed)
-            .map_err(|err| anyhow!("error visualizing graph: {}", err))?;
-        System::current().stop_with_code(0);
-        return Ok(());
+
+        match graph::draw_graph(filtered_tasks, opts.boxed)
+            .map_err(|err| anyhow!("Error visualizing graph: {}", err))
+        {
+            Result::Ok(..) => {
+                System::current().stop_with_code(0);
+                return Ok(());
+            }
+            Err(e) => {
+                System::current().stop_with_code(1);
+                return Err(e);
+            }
+        };
     }
 
     let base_dir = config_path.parent().unwrap().to_path_buf();

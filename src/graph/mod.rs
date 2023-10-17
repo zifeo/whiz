@@ -11,8 +11,6 @@ pub mod graph_task;
 mod ui;
 
 pub fn draw_graph(tasks_list: Vec<Task>, boxed: bool) -> Result<(), Box<dyn Error>> {
-    // let config = command::parse_argument()?;
-    // let tasks = Task::from_file(config.file_path)?;
     let boxed = match boxed {
         true => LineFormat::Boxed,
         _ => LineFormat::Ascii,

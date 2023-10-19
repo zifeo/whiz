@@ -10,9 +10,12 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
 
+pub mod color;
 pub mod pipe;
 
 use pipe::Pipe;
+
+use self::color::ColorOption;
 
 #[derive(Deserialize, Debug, Clone, Default)]
 #[serde(untagged)]
@@ -76,6 +79,9 @@ pub struct Task {
     /// `whiz://{task_name}` as default.
     #[serde(default)]
     pub pipe: HashMap<String, String>,
+
+    #[serde(default)]
+    pub color: IndexMap<String, String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -267,6 +273,22 @@ impl Config {
         }
 
         Ok(pipes)
+    }
+
+    pub fn get_colors_map(&self) -> Result<HashMap<String, Vec<ColorOption>>> {
+        let mut colors = HashMap::new();
+
+        for (task_name, task) in &self.ops {
+            let task_color_options: Vec<ColorOption> = task
+                .color
+                .iter()
+                .filter_map(|color_config| ColorOption::from(color_config).ok())
+                .collect();
+
+            colors.insert(task_name.to_owned(), task_color_options);
+        }
+
+        Ok(colors)
     }
 
     /// Remove dependencies that are child of another dependency for
@@ -466,6 +488,53 @@ mod tests {
             let expected_jobs = vec!["test", "test_dependency", "not_test_dependency"];
 
             assert_array_not_strict!(jobs, expected_jobs);
+        }
+    }
+
+    mod colors {
+        use regex::Regex;
+
+        use super::*;
+
+        const CONFIG_EXAMPLE: &str = r#"
+            task1:
+                color:
+                    "^abc": red
+                    "My": yellow
+            task2:
+                color:
+                    "d+": '#def'
+            "#;
+
+        #[test]
+        fn parse_colors_map() {
+            let config: Config = CONFIG_EXAMPLE.parse().unwrap();
+            let actual = config.get_colors_map().unwrap();
+            let mut expected = HashMap::new();
+
+            expected.insert(
+                "task1".to_owned(),
+                vec![
+                    ColorOption::new(
+                        Regex::from_str("^abc").unwrap(),
+                        ColorOption::parse_color("red").unwrap(),
+                    ),
+                    ColorOption::new(
+                        Regex::from_str("My").unwrap(),
+                        ColorOption::parse_color("yellow").unwrap(),
+                    ),
+                ],
+            );
+            expected.insert(
+                "task2".to_owned(),
+                vec![ColorOption::new(
+                    Regex::from_str("d+").unwrap(),
+                    ColorOption::parse_color("#def").unwrap(),
+                )],
+            );
+
+            assert_eq!(actual.get("task1").unwrap(), expected.get("task1").unwrap());
+            assert_eq!(actual.get("task2").unwrap(), expected.get("task2").unwrap());
         }
     }
 }

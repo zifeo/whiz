@@ -2236,6 +2236,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "termgraph"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f78f23e6418b6ca453bf772e03567961c181230eb5bab587c7e3b186ae6fb42"
+
+[[package]]
 name = "termtree"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2701,6 +2707,7 @@ dependencies = [
  "shlex",
  "strip-ansi-escapes",
  "subprocess",
+ "termgraph",
  "textwrap",
  "tokio",
  "url",

@@ -90,10 +90,15 @@ fn hello() {
             ))
             .await?;
 
-        let commands =
-            CommandActorsBuilder::new(config, console, watcher, env::current_dir().unwrap(), HashMap::new())
-                .build()
-                .await?;
+        let commands = CommandActorsBuilder::new(
+            config,
+            console,
+            watcher,
+            env::current_dir().unwrap(),
+            Default::default(),
+        )
+        .build()
+        .await?;
 
         let status = commands
             .get(&"test".to_string())
@@ -118,7 +123,7 @@ fn test_grim_reaper() {
     });
 
     let fut = async move {
-        let config_raw =r#"
+        let config_raw = r#"
 test:
     entrypoint: 'python3 -c'
     command: 'print("hello whiz")'
@@ -146,10 +151,15 @@ long_test:
             _msg: WatchGlob => Some(()),
         });
 
-        let commands =
-            CommandActorsBuilder::new(config, console, watcher, env::current_dir().unwrap())
-                .build()
-                .await?;
+        let commands = CommandActorsBuilder::new(
+            config,
+            console,
+            watcher,
+            env::current_dir().unwrap(),
+            Default::default(),
+        )
+        .build()
+        .await?;
 
         GrimReaperActor::start_new(commands).await?;
         Ok(())

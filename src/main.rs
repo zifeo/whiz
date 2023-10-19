@@ -159,17 +159,23 @@ async fn run(args: Args) -> Result<()> {
     let console =
         ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned()), args.timestamp).start();
     let watcher = WatcherActor::new(base_dir.clone()).start();
-    let cmds = CommandActorsBuilder::new(config, console.clone(), watcher, base_dir.clone(), colors_map)
-        .verbose(args.verbose)
-        .pipes_map(pipes_map)
-        .globally_enable_watch(if args.exit_after {
-            false
-        } else {
-            args.watch.unwrap_or(true)
-        })
-        .build()
-        .await
-        .map_err(|err| anyhow!("error spawning commands: {}", err))?;
+    let cmds = CommandActorsBuilder::new(
+        config,
+        console.clone(),
+        watcher,
+        base_dir.clone(),
+        colors_map,
+    )
+    .verbose(args.verbose)
+    .pipes_map(pipes_map)
+    .globally_enable_watch(if args.exit_after {
+        false
+    } else {
+        args.watch.unwrap_or(true)
+    })
+    .build()
+    .await
+    .map_err(|err| anyhow!("error spawning commands: {}", err))?;
 
     if args.exit_after {
         whiz::actors::grim_reaper::GrimReaperActor::start_new(cmds).await?;

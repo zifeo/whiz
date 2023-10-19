@@ -75,15 +75,19 @@ complete example.
 
 See `whiz --help` for more information.
 
-| Flags               | Description                  |
-| ------------------- | ---------------------------- |
-| -f, --file \<FILE\> | specify the config file      |
-| -h, --help          | print help information       |
-| --list-jobs         | list all the available jobs  |
-| -r, --run \<JOB\>   | run specific jobs            |
-| -t, --timestamp     | enable timestamps in logging |
-| -v, --verbose       | enable verbose mode          |
-| -V, --version       | print whiz version           |
+| Flags               | Description                                       |
+| ------------------- | ------------------------------------------------- |
+| -f, --file \<FILE\> | Specify the config file                           |
+| -h, --help          | Print help information                            |
+| --list-jobs         | List all the available jobs                       |
+| -r, --run \<JOB\>   | Run specific jobs                                 |
+| -t, --timestamp     | Enable timestamps in logging                      |
+| -v, --verbose       | Enable verbose mode                               |
+| -V, --version       | Print whiz version                                |
+| -V, --version       | Print whiz version                                |
+| --watch             | Globally enable/disable fs watching               |
+| --exit-after        | Exit whiz after all tasks are done. Useful for CI | 
+
 
 ### Key bindings
 

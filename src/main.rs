@@ -10,8 +10,9 @@ use clap::Parser;
 use self_update::{backends::github::Update, cargo_crate_version, update::UpdateStatus};
 use semver::Version;
 use tokio::time::{sleep, Duration as TokioDuration};
+use whiz::actors::command::CommandActorsBuilder;
 use whiz::{
-    actors::{command::CommandActor, console::ConsoleActor, watcher::WatcherActor},
+    actors::{console::ConsoleActor, watcher::WatcherActor},
     args::Command,
     config::Config,
     global_config::GlobalConfig,
@@ -111,9 +112,8 @@ fn main() -> Result<()> {
         })
     });
 
-    let _ = system.run();
-
-    Ok(())
+    let code = system.run_with_code()?;
+    std::process::exit(code);
 }
 
 async fn run(args: Args) -> Result<()> {
@@ -159,17 +159,27 @@ async fn run(args: Args) -> Result<()> {
     let console =
         ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned()), args.timestamp).start();
     let watcher = WatcherActor::new(base_dir.clone()).start();
-    CommandActor::from_config(
-        &config,
+    let cmds = CommandActorsBuilder::new(
+        config,
         console.clone(),
         watcher,
         base_dir.clone(),
-        args.verbose,
-        pipes_map,
         colors_map,
     )
+    .verbose(args.verbose)
+    .pipes_map(pipes_map)
+    .globally_enable_watch(if args.exit_after {
+        false
+    } else {
+        args.watch.unwrap_or(true)
+    })
+    .build()
     .await
     .map_err(|err| anyhow!("error spawning commands: {}", err))?;
+
+    if args.exit_after {
+        whiz::actors::grim_reaper::GrimReaperActor::start_new(cmds).await?;
+    }
 
     Ok(())
 }

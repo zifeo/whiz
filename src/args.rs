@@ -36,6 +36,7 @@ pub struct Args {
     #[clap(short, long)]
     pub verbose: bool,
 
+    /// Enable timestamps in logging
     #[clap(short, long)]
     pub timestamp: bool,
 
@@ -46,4 +47,13 @@ pub struct Args {
     /// List all the jobs set in the config file
     #[clap(long)]
     pub list_jobs: bool,
+
+    /// Whiz will exit after all tasks have finished executing.
+    /// This disables fs watching despite any values given to the `watch` flag.
+    #[clap(long)]
+    pub exit_after: bool,
+
+    /// Globally toggle triggering task reloading from any watched files
+    #[clap(long, default_value = "true", value_name = "WATCH")]
+    pub watch: Option<bool>,
 }

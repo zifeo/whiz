@@ -20,6 +20,7 @@ use std::{
 
 use shlex;
 
+use crate::config::color::ColorOption;
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
@@ -111,6 +112,7 @@ pub struct CommandActor {
     started_at: DateTime<Local>,
     env: Vec<(String, String)>,
     pipes: Vec<Pipe>,
+    colors: Vec<ColorOption>,
     entrypoint: Option<String>,
 }
 
@@ -122,6 +124,7 @@ impl CommandActor {
         base_dir: PathBuf,
         verbose: bool,
         pipes_map: HashMap<String, Vec<Pipe>>,
+        colors_map: HashMap<String, Vec<ColorOption>>,
     ) -> Result<Vec<Addr<CommandActor>>> {
         let mut shared_env = HashMap::from_iter(std::env::vars());
         shared_env.extend(lade_sdk::resolve(&config.env, &shared_env)?);
@@ -132,6 +135,7 @@ impl CommandActor {
         for (op_name, nexts) in config.build_dag().unwrap().into_iter() {
             let op = config.ops.get(&op_name).unwrap();
             let task_pipes = pipes_map.get(&op_name).unwrap_or(&Vec::new()).clone();
+            let colors = colors_map.get(&op_name).unwrap_or(&Vec::new()).clone();
             let cwd = match op.workdir.clone() {
                 Some(path) => base_dir.join(path),
                 None => base_dir.clone(),
@@ -167,6 +171,7 @@ impl CommandActor {
                 verbose,
                 env.into_iter().collect(),
                 task_pipes,
+                colors,
                 op.entrypoint.clone(),
             )
             .start();
@@ -191,6 +196,7 @@ impl CommandActor {
         verbose: bool,
         env: Vec<(String, String)>,
         pipes: Vec<Pipe>,
+        colors: Vec<ColorOption>,
         entrypoint: Option<String>,
     ) -> Self {
         Self {
@@ -208,6 +214,7 @@ impl CommandActor {
             started_at: Local::now(),
             env,
             pipes,
+            colors,
             entrypoint,
         }
     }
@@ -329,6 +336,7 @@ impl CommandActor {
         let cwd = self.cwd.clone();
         let watcher = self.watcher.clone();
         let task_pipes = self.pipes.clone();
+        let task_colors = self.colors.clone();
 
         let fut = async move {
             for line in reader.lines() {
@@ -349,6 +357,7 @@ impl CommandActor {
                                 console.do_send(RegisterPanel {
                                     name: tab_name.to_owned(),
                                     addr: addr.clone(),
+                                    colors: task_colors.clone()
                                 });
                             }
                             console.do_send(Output::now(tab_name.to_owned(), line.clone(), false));
@@ -412,6 +421,7 @@ impl Actor for CommandActor {
         self.console.do_send(RegisterPanel {
             name: self.op_name.clone(),
             addr,
+            colors: self.colors.clone()
         });
 
         let watches = self.operator.watch.resolve();

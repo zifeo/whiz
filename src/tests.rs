@@ -93,6 +93,7 @@ fn hello() {
             env::current_dir().unwrap(),
             false,
             HashMap::new(),
+            HashMap::new(),
         )
         .await?;
 

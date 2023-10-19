@@ -23,7 +23,7 @@ pub struct Graph {
 pub enum Command {
     /// Upgrade whiz.
     Upgrade(Upgrade),
-    /// Print the graphical ascii representation
+    /// PUpgrade whizrint the graphical ascii representation
     Graph(Graph),
     /// List all the jobs set in the config file
     ListJobs,
@@ -49,9 +49,21 @@ pub struct Args {
     pub verbose: bool,
 
     #[arg(short, long)]
+    /// Enable timestamps in logging
     pub timestamp: bool,
 
     /// Run specific jobs
     #[arg(short, long, value_name = "JOB")]
     pub run: Vec<String>,
+
+    // This disables fs watching despite any values given to the `watch` flag.
+    //
+    /// Whiz will exit after all tasks have finished executing.
+    #[arg(long)]
+    pub exit_after: bool,
+
+    // Globally toggle triggering task reloading from any watched files
+    /// Globally enable/disable fs watching
+    #[arg(long, default_value_t = true)]
+    pub watch: bool,
 }

@@ -26,7 +26,7 @@ steps.
 curl -fsSL https://raw.githubusercontent.com/zifeo/whiz/main/installer.sh | bash
 
 # via cargo
-cargo install whiz --locked 
+cargo install whiz --locked
 cargo install --git https://github.com/zifeo/whiz --locked
 
 # create your tasks file, see https://github.com/zifeo/whiz/blob/main/whiz.yaml for an example
@@ -75,15 +75,25 @@ complete example.
 
 See `whiz --help` for more information.
 
-| Flags               | Description                  |
-| ------------------- | ---------------------------- |
-| -f, --file \<FILE\> | specify the config file      |
-| -h, --help          | print help information       |
-| --list-jobs         | list all the available jobs  |
-| -r, --run \<JOB\>   | run specific jobs            |
-| -t, --timestamp     | enable timestamps in logging |
-| -v, --verbose       | enable verbose mode          |
-| -V, --version       | print whiz version           |
+| Subcommads          | Description                                       |
+| ------------------- | ------------------------------------------------- |
+| upgrade             | Upgrade whiz                                      |
+| list-jobs           | List all the available jobs                       |
+| graph               | Print the graphical ascii representation          |
+| help                | Display help message or the help for subcommand   |
+
+
+| Flags               | Description                                       |
+| ------------------- | ------------------------------------------------- |
+| -f, --file \<FILE\> | Specify the config file                           |
+| -h, --help          | Print help information                            |
+| -r, --run \<JOB\>   | Run specific jobs                                 |
+| -t, --timestamp     | Enable timestamps in logging                      |
+| -v, --verbose       | Enable verbose mode                               |
+| -V, --version       | Print whiz version                                |
+| --watch             | Globally enable/disable fs watching               |
+| --exit-after        | Exit whiz after all tasks are done							  |
+
 
 ### Key bindings
 
@@ -107,3 +117,4 @@ See `whiz --help` for more information.
 ```bash
 cargo run --
 ```
+

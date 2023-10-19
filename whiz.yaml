@@ -5,6 +5,9 @@ speedy:
     command: 'for i in {10..50}; do for j in {10..30}; do echo -n "$i-$j "; done; echo; done'
     watch:
         - "src/**/*.rs"
+    color:
+        "22": green
+        "23": yellow
 
 err:
     command: exit 1
@@ -58,6 +61,8 @@ color:
 color2:
     command: 'print(u"\033[92mHello World\033[0m")'
     entrypoint: 'python3 -c'
+    color:
+        "Hello": red
 
 what_shell:
     command: echo $(which $0)
@@ -127,3 +132,13 @@ friends_conversation:
     pipe:
         # Dynamic naming for virtual tabs generation
         '^\[message\] (?P<name>[a-zA-Z]+):.*$': whiz://talker_${name}
+
+colors_test:
+    command: |
+        echo "[message] Dave: Hello!"
+        echo "[message] Bob: Bonjour!"
+        echo "[message] John: Bye-Bye!"
+    
+    color:
+        "\\[[a-z]+\\]": "yellow"
+        "[A-Z][a-z]+\\:": "#def"

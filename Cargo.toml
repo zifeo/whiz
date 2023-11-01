@@ -36,7 +36,7 @@ serde_yaml = "0.9.25"
 strip-ansi-escapes = "0.2.0"
 subprocess = "0.2.9"
 textwrap = "0.16.0"
-tokio = { version = "1.32.0", features = ["full"] }
+tokio = { version = "1.33.0", features = ["full"] }
 ratatui = "0.23.0"
 url = "2.4.1"
 assert_cmd = "2.0.12"

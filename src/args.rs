@@ -36,7 +36,7 @@ pub enum Command {
     long_about= None,
 )]
 pub struct Args {
-    #[arg(long)]
+    #[arg(short = 'V', long)]
     pub version: bool,
 
     #[command(subcommand)]

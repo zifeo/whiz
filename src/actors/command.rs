@@ -164,6 +164,29 @@ impl CommandActorsBuilder {
         }
     }
 
+    pub fn add_highlighting(config: &mut Config) {
+        let ops = config.ops.clone();
+
+        for (k, task) in ops.iter() {
+            for command in task.command.iter() {
+                let old_command = command.clone();
+                let mut new_args = Vec::new();
+                for arg in old_command.split('\n') {
+                    if arg.trim().len() == 0 {
+                        continue;
+                    }
+                    new_args.push(format!("{} | tspin", arg));
+                }
+                let new_command = new_args.join("\n");
+                let new_task = Task {
+                    command: Some(new_command),
+                    ..task.clone()
+                };
+                config.ops.insert(k.clone(), new_task);
+            }
+        }
+    }
+
     pub fn globally_enable_watch(self, toggle: bool) -> Self {
         Self {
             watch_enabled_globally: toggle,
@@ -173,7 +196,7 @@ impl CommandActorsBuilder {
 
     pub async fn build(self) -> Result<HashMap<String, Addr<CommandActor>>> {
         let Self {
-            config,
+            mut config,
             console,
             watcher,
             base_dir,
@@ -187,6 +210,7 @@ impl CommandActorsBuilder {
         let shared_env = lade_sdk::hydrate(shared_env, base_dir.clone()).await?;
 
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
+        CommandActorsBuilder::add_highlighting(&mut config);
 
         for (op_name, nexts) in config.build_dag().unwrap().into_iter() {
             let op = config.ops.get(&op_name).unwrap();

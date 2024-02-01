@@ -20,8 +20,8 @@ use std::{
 
 use shlex;
 
-use crate::actors::grim_reaper::PermaDeathInvite;
 use crate::config::color::ColorOption;
+use crate::actors::grim_reaper::PermaDeathInvite;
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,

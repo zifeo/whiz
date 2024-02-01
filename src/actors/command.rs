@@ -10,7 +10,7 @@ use globset::{Glob, GlobSetBuilder};
 use path_absolutize::*;
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
+use std::io::{stdin, Read, Write};
 use std::path::Path;
 use std::{collections::HashMap, time::Duration};
 use std::{
@@ -20,8 +20,8 @@ use std::{
 
 use shlex;
 
-use crate::config::color::ColorOption;
 use crate::actors::grim_reaper::PermaDeathInvite;
+use crate::config::color::ColorOption;
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
@@ -164,29 +164,6 @@ impl CommandActorsBuilder {
         }
     }
 
-    pub fn add_highlighting(config: &mut Config) {
-        let ops = config.ops.clone();
-
-        for (k, task) in ops.iter() {
-            for command in task.command.iter() {
-                let old_command = command.clone();
-                let mut new_args = Vec::new();
-                for arg in old_command.split('\n') {
-                    if arg.trim().len() == 0 {
-                        continue;
-                    }
-                    new_args.push(format!("{} | tspin", arg));
-                }
-                let new_command = new_args.join("\n");
-                let new_task = Task {
-                    command: Some(new_command),
-                    ..task.clone()
-                };
-                config.ops.insert(k.clone(), new_task);
-            }
-        }
-    }
-
     pub fn globally_enable_watch(self, toggle: bool) -> Self {
         Self {
             watch_enabled_globally: toggle,
@@ -196,7 +173,7 @@ impl CommandActorsBuilder {
 
     pub async fn build(self) -> Result<HashMap<String, Addr<CommandActor>>> {
         let Self {
-            mut config,
+            config,
             console,
             watcher,
             base_dir,
@@ -210,7 +187,6 @@ impl CommandActorsBuilder {
         let shared_env = lade_sdk::hydrate(shared_env, base_dir.clone()).await?;
 
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
-        CommandActorsBuilder::add_highlighting(&mut config);
 
         for (op_name, nexts) in config.build_dag().unwrap().into_iter() {
             let op = config.ops.get(&op_name).unwrap();
@@ -274,6 +250,7 @@ pub struct CommandActor {
     watcher: Addr<WatcherAct>,
     arbiter: Arbiter,
     child: Child,
+    tspin_child: Child,
     nexts: Vec<Addr<CommandActor>>,
     cwd: PathBuf,
     self_addr: Option<Addr<CommandActor>>,
@@ -311,6 +288,7 @@ impl CommandActor {
             watcher,
             arbiter: Arbiter::new(),
             child: Child::NotStarted,
+            tspin_child: Child::NotStarted,
             nexts,
             cwd,
             self_addr: None,
@@ -433,9 +411,18 @@ impl CommandActor {
             .popen()
             .unwrap();
 
-        let stdout = p.stdout.take().unwrap();
-        let reader = BufReader::new(stdout);
+        let output_file = p.stdout.take().unwrap();
+        let mut tspin_p = Exec::cmd("tspin")
+            .cwd(&self.cwd)
+            .stdin(output_file)
+            .stdout(Redirection::Pipe)
+            .stderr(Redirection::Merge)
+            .popen()
+            .unwrap();
 
+        let tspin_stdout = tspin_p.stdout.take().unwrap();
+
+        let reader = BufReader::new(tspin_stdout);
         let console = self.console.clone();
         let op_name = self.op_name.clone();
         let self_addr = self.self_addr.clone();
@@ -464,7 +451,7 @@ impl CommandActor {
                                 console.do_send(RegisterPanel {
                                     name: tab_name.to_owned(),
                                     addr: addr.clone(),
-                                    colors: task_colors.clone()
+                                    colors: task_colors.clone(),
                                 });
                             }
                             console.do_send(Output::now(tab_name.to_owned(), line.clone(), false));
@@ -511,6 +498,7 @@ impl CommandActor {
         };
 
         self.child = Child::Process(p);
+        self.tspin_child = Child::Process(tspin_p);
         self.started_at = started_at;
         self.arbiter.spawn(fut);
 
@@ -539,7 +527,7 @@ impl Actor for CommandActor {
         self.console.do_send(RegisterPanel {
             name: self.op_name.clone(),
             addr,
-            colors: self.colors.clone()
+            colors: self.colors.clone(),
         });
 
         let watches = self.operator.watch.resolve();

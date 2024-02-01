@@ -10,7 +10,7 @@ use globset::{Glob, GlobSetBuilder};
 use path_absolutize::*;
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{stdin, Read, Write};
+use std::io::Write;
 use std::path::Path;
 use std::{collections::HashMap, time::Duration};
 use std::{

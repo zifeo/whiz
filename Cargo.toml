@@ -23,7 +23,7 @@ openssl = { version = "0.10.58", features = ["vendored"] }
 notify = "6.1.1"
 path-absolutize = "3.1.1"
 path-clean = "1.0.1"
-regex = "1.10.2"
+regex = "1.10.3"
 self_update = { version = "0.39.0", features = [
   "archive-tar",
   "archive-zip",
@@ -43,4 +43,5 @@ assert_cmd = "2.0.12"
 semver = "1.0.20"
 shlex = "1.2.0"
 termgraph = "0.4.0"
-tailspin = "3.0.0"
+tailspin = { git = "https://github.com/destifo/tailspin", branch = "tailspin-lib-crate" }
+color-eyre = "0.6.2"

@@ -20,14 +20,15 @@ use std::{
 
 use shlex;
 
-use crate::config::color::ColorOption;
 use crate::actors::grim_reaper::PermaDeathInvite;
+use crate::config::color::ColorOption;
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
 };
 
 use super::console::{Output, PanelStatus, RegisterPanel};
+use super::custom_highlighter::CustomHighlighter;
 use super::watcher::{IgnorePath, WatchGlob};
 
 #[cfg(not(test))]
@@ -250,7 +251,6 @@ pub struct CommandActor {
     watcher: Addr<WatcherAct>,
     arbiter: Arbiter,
     child: Child,
-    tspin_child: Child,
     nexts: Vec<Addr<CommandActor>>,
     cwd: PathBuf,
     self_addr: Option<Addr<CommandActor>>,
@@ -288,7 +288,6 @@ impl CommandActor {
             watcher,
             arbiter: Arbiter::new(),
             child: Child::NotStarted,
-            tspin_child: Child::NotStarted,
             nexts,
             cwd,
             self_addr: None,
@@ -412,17 +411,8 @@ impl CommandActor {
             .unwrap();
 
         let output_file = p.stdout.take().unwrap();
-        let mut tspin_p = Exec::cmd("tspin")
-            .cwd(&self.cwd)
-            .stdin(output_file)
-            .stdout(Redirection::Pipe)
-            .stderr(Redirection::Merge)
-            .popen()
-            .unwrap();
 
-        let tspin_stdout = tspin_p.stdout.take().unwrap();
-
-        let reader = BufReader::new(tspin_stdout);
+        let reader = BufReader::new(output_file);
         let console = self.console.clone();
         let op_name = self.op_name.clone();
         let self_addr = self.self_addr.clone();
@@ -431,10 +421,11 @@ impl CommandActor {
         let watcher = self.watcher.clone();
         let task_pipes = self.pipes.clone();
         let task_colors = self.colors.clone();
+        let highlighter = CustomHighlighter::build();
 
         let fut = async move {
             for line in reader.lines() {
-                let mut line = line.unwrap();
+                let mut line = highlighter.apply(vec![line.unwrap()]);
 
                 let task_pipe = task_pipes.iter().find(|pipe| pipe.regex.is_match(&line));
 
@@ -498,7 +489,6 @@ impl CommandActor {
         };
 
         self.child = Child::Process(p);
-        self.tspin_child = Child::Process(tspin_p);
         self.started_at = started_at;
         self.arbiter.spawn(fut);
 

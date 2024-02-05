@@ -16,7 +16,7 @@ use crate::{
         watcher::WatcherActor,
     },
     config::Config,
-    utils::recurse_config_file,
+    utils::util_functions::recurse_config_file,
 };
 use actix::{actors::mocker::Mocker, prelude::*};
 use assert_cmd::Command;

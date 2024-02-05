@@ -26,7 +26,7 @@ use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
 };
-use crate::utils::CustomHighlighter;
+use crate::utils::custom_highlighter::CustomHighlighter;
 
 use super::console::{Output, PanelStatus, RegisterPanel};
 use super::watcher::{IgnorePath, WatchGlob};

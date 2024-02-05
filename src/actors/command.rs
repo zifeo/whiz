@@ -20,12 +20,13 @@ use std::{
 
 use shlex;
 
-use crate::config::color::ColorOption;
 use crate::actors::grim_reaper::PermaDeathInvite;
+use crate::config::color::ColorOption;
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
 };
+use crate::utils::custom_highlighter::CustomHighlighter;
 
 use super::console::{Output, PanelStatus, RegisterPanel};
 use super::watcher::{IgnorePath, WatchGlob};
@@ -409,9 +410,9 @@ impl CommandActor {
             .popen()
             .unwrap();
 
-        let stdout = p.stdout.take().unwrap();
-        let reader = BufReader::new(stdout);
+        let output_file = p.stdout.take().unwrap();
 
+        let reader = BufReader::new(output_file);
         let console = self.console.clone();
         let op_name = self.op_name.clone();
         let self_addr = self.self_addr.clone();
@@ -420,10 +421,11 @@ impl CommandActor {
         let watcher = self.watcher.clone();
         let task_pipes = self.pipes.clone();
         let task_colors = self.colors.clone();
+        let highlighter = CustomHighlighter::build();
 
         let fut = async move {
             for line in reader.lines() {
-                let mut line = line.unwrap();
+                let mut line = highlighter.apply(vec![line.unwrap()]);
 
                 let task_pipe = task_pipes.iter().find(|pipe| pipe.regex.is_match(&line));
 
@@ -440,7 +442,7 @@ impl CommandActor {
                                 console.do_send(RegisterPanel {
                                     name: tab_name.to_owned(),
                                     addr: addr.clone(),
-                                    colors: task_colors.clone()
+                                    colors: task_colors.clone(),
                                 });
                             }
                             console.do_send(Output::now(tab_name.to_owned(), line.clone(), false));
@@ -515,7 +517,7 @@ impl Actor for CommandActor {
         self.console.do_send(RegisterPanel {
             name: self.op_name.clone(),
             addr,
-            colors: self.colors.clone()
+            colors: self.colors.clone(),
         });
 
         let watches = self.operator.watch.resolve();

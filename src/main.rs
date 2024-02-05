@@ -14,7 +14,7 @@ use whiz::{
     args::Command,
     config::Config,
     global_config::GlobalConfig,
-    utils::recurse_config_file,
+    utils::util_functions::recurse_config_file,
 };
 mod graph;
 

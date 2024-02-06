@@ -1,3 +1,4 @@
+use actix::System;
 use anyhow::{anyhow, Result};
 use crossterm::style::Stylize;
 use std::{fs::File, path::PathBuf};
@@ -57,25 +58,18 @@ pub async fn start(opts: &Execute, config_file: File, base_dir: PathBuf) -> Resu
         .await?;
 
         let prefix = if exit_status.success() {
-            // filled success mark
             "✓".green()
         } else {
             "✖️".red()
         };
 
-        // println!("--------- END OF OUTPUT ---------");
         println!(
             "---- {prefix} Task {task} exited with status {status} ----",
             task = task_name.as_str().cyan(),
             status = format!("{:?}", exit_status).yellow(),
         );
 
-        // println!(
-        //     "{}",
-        //     format!("Task {task_name:?}: finished with status {exit_status:?}")
-        //         .grey()
-        //         .on_dark_grey()
-        // );
+        System::current().stop_with_code(1);
 
         executed_tasks.push(task_name.clone());
     }

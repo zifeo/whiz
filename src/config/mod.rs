@@ -88,7 +88,7 @@ pub struct Task {
 }
 
 #[derive(Deserialize, Debug)]
-struct RawConfig {
+pub struct RawConfig {
     #[serde(default)]
     pub env: HashMap<String, String>,
 
@@ -103,6 +103,26 @@ pub struct ConfigInner {
     pub ops: Ops,
     pub pipes_map: HashMap<String, Vec<Pipe>>,
     pub colors_map: HashMap<String, Vec<ColorOption>>,
+}
+
+impl ConfigInner {
+    pub fn from_raw(config: RawConfig, base_dir: PathBuf) -> Result<Self> {
+        let pipes_map = config
+            .get_pipes_map()
+            .context("Error while getting pipes")?;
+
+        let colors_map = config
+            .get_colors_map()
+            .context("Error while getting colors")?;
+
+        Ok(Self {
+            base_dir: base_dir.into(),
+            env: config.env,
+            ops: config.ops,
+            pipes_map,
+            colors_map,
+        })
+    }
 }
 
 pub type Config = Arc<ConfigInner>;
@@ -228,22 +248,10 @@ impl ConfigBuilder {
                 .context("Error while filtering jobs")?;
         }
 
-        let pipes_map = config
-            .get_pipes_map()
-            .context("Error while getting pipes")?;
-        let colors_map = config
-            .get_colors_map()
-            .context("Error while getting colors")?;
-
-        let config = Arc::new(ConfigInner {
-            base_dir: self.path.parent().unwrap().into(),
-            env: config.env,
-            ops: config.ops,
-            pipes_map,
-            colors_map,
-        });
-
-        Ok(config)
+        Ok(Arc::new(ConfigInner::from_raw(
+            config,
+            self.path.parent().unwrap().into(),
+        )?))
     }
 }
 
@@ -313,7 +321,7 @@ mod tests {
             let config: RawConfig = CONFIG_EXAMPLE.parse().unwrap();
             let jobs = &["c".to_string(), "z".to_string()];
 
-            let jobs = config.get_all_dependencies(jobs);
+            let jobs = ops::get_all_dependencies(&config.ops, jobs);
             let expected_jobs = vec!["a", "b", "y"];
 
             assert_array_not_strict!(jobs, expected_jobs);
@@ -323,7 +331,7 @@ mod tests {
         fn gets_dependencies_from_config_file() {
             let config: RawConfig = CONFIG_EXAMPLE.parse().unwrap();
 
-            let jobs = config.get_dependencies("c");
+            let jobs = ops::get_dependencies(&config.ops, "c");
             let expected_jobs = vec!["b"];
 
             assert_array_not_strict!(jobs, expected_jobs);
@@ -346,8 +354,8 @@ mod tests {
             let config: RawConfig = CONFIG_EXAMPLE.parse().unwrap();
 
             assert_array_not_strict!(
-                config.get_dependencies("d"),
-                config.get_dependencies("with_alias")
+                ops::get_dependencies(&config.ops, "d"),
+                ops::get_dependencies(&config.ops, "with_alias")
             );
 
             let job_with_alias = config.ops.get("with_alias").unwrap();

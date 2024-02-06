@@ -47,6 +47,30 @@ mod prelude {
 
 use prelude::*;
 
+pub struct ExtendedTask {
+    name: String,
+    task: Task,
+    pipes: Vec<Pipe>,
+    colors: Vec<ColorOption>,
+    cwd: PathBuf,
+}
+
+impl Task {
+    pub fn extend(&self, name: String, config: &Config) -> ExtendedTask {
+        let cwd = self.get_absolute_workdir(&config.base_dir);
+        let pipes = config.pipes_map.get(&name).unwrap_or(&Vec::new()).clone();
+        let colors = config.colors_map.get(&name).unwrap_or(&Vec::new()).clone();
+
+        ExtendedTask {
+            name,
+            task: self.clone(),
+            pipes,
+            colors,
+            cwd,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Child {
     NotStarted,
@@ -165,40 +189,26 @@ impl CommandActorsBuilder {
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
 
         for (op_name, nexts) in config.build_dag().unwrap().into_iter() {
-            let op = config.ops.get(&op_name).unwrap();
-            let task_pipes = config
-                .pipes_map
-                .get(&op_name)
-                .unwrap_or(&Vec::new())
-                .clone();
-            let colors = config
-                .colors_map
-                .get(&op_name)
-                .unwrap_or(&Vec::new())
-                .clone();
-            let cwd = op.get_absolute_workdir(&config.base_dir);
+            let task = config.ops.get(&op_name).unwrap();
 
-            let exec_builder = ExecBuilder::new(op, &config).await?;
+            let exec_builder = ExecBuilder::new(task, &config).await?;
+            let op = task.extend(op_name.clone(), &config);
 
             let actor = CommandActor::new(
-                op_name.clone(),
-                op.clone(),
+                op,
                 console.clone(),
                 watcher.clone(),
                 nexts
                     .iter()
                     .map(|e| commands.get(e).unwrap().clone())
                     .collect(),
-                cwd.clone(),
                 verbose,
-                task_pipes,
-                colors,
                 watch_enabled_globally,
                 exec_builder,
             )
             .start();
 
-            if op.depends_on.resolve().is_empty() {
+            if task.depends_on.resolve().is_empty() {
                 actor.do_send(Reload::Start)
             }
             commands.insert(op_name, actor);
@@ -209,20 +219,16 @@ impl CommandActorsBuilder {
 }
 
 pub struct CommandActor {
-    op_name: String,
-    operator: Task,
+    operator: ExtendedTask,
     console: Addr<ConsoleAct>,
     watcher: Addr<WatcherAct>,
     arbiter: Arbiter,
     child: Child,
     nexts: Vec<Addr<CommandActor>>,
-    cwd: PathBuf,
     self_addr: Option<Addr<CommandActor>>,
     pending_upstream: BTreeMap<String, usize>,
     verbose: bool,
     started_at: DateTime<Local>,
-    pipes: Vec<Pipe>,
-    colors: Vec<ColorOption>,
     watch: bool,
     death_invite: Option<PermaDeathInvite>,
     exec_builder: ExecBuilder,
@@ -231,33 +237,25 @@ pub struct CommandActor {
 impl CommandActor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        op_name: String,
-        operator: Task,
+        operator: ExtendedTask,
         console: Addr<ConsoleAct>,
         watcher: Addr<WatcherAct>,
         nexts: Vec<Addr<CommandActor>>,
-        cwd: PathBuf,
         verbose: bool,
-        pipes: Vec<Pipe>,
-        colors: Vec<ColorOption>,
         watch: bool,
         exec_builder: ExecBuilder,
     ) -> Self {
         Self {
-            op_name,
             operator,
             console,
             watcher,
             arbiter: Arbiter::new(),
             child: Child::NotStarted,
             nexts,
-            cwd,
             self_addr: None,
             pending_upstream: BTreeMap::default(),
             verbose,
             started_at: Local::now(),
-            pipes,
-            colors,
             watch,
             death_invite: None,
             exec_builder,
@@ -265,7 +263,7 @@ impl CommandActor {
     }
 
     fn log_info(&self, log: String) {
-        let job_name = self.op_name.clone();
+        let job_name = self.operator.name.clone();
 
         self.console.do_send(Output::now(job_name, log, true));
     }
@@ -293,14 +291,14 @@ impl CommandActor {
 
     fn send_reload(&self) {
         for next in (self.nexts).iter() {
-            next.do_send(Reload::Op(self.op_name.clone()));
+            next.do_send(Reload::Op(self.operator.name.clone()));
         }
     }
 
     fn send_will_reload(&self) {
         for next in (self.nexts).iter() {
             next.do_send(WillReload {
-                op_name: self.op_name.clone(),
+                op_name: self.operator.name.clone(),
             });
         }
     }
@@ -308,7 +306,7 @@ impl CommandActor {
     fn reload(&mut self) -> Result<()> {
         self.log_debug(self.exec_builder.to_string());
         self.console.do_send(PanelStatus {
-            panel_name: self.op_name.clone(),
+            panel_name: self.operator.name.clone(),
             status: None,
         });
 
@@ -325,13 +323,13 @@ impl CommandActor {
         let reader = BufReader::new(stdout);
 
         let console = self.console.clone();
-        let op_name = self.op_name.clone();
+        let op_name = self.operator.name.clone();
         let self_addr = self.self_addr.clone();
         let started_at = Local::now();
-        let cwd = self.cwd.clone();
+        let cwd = self.operator.cwd.clone();
         let watcher = self.watcher.clone();
-        let task_pipes = self.pipes.clone();
-        let task_colors = self.colors.clone();
+        let task_pipes = self.operator.pipes.clone();
+        let task_colors = self.operator.colors.clone();
 
         let fut = async move {
             for line in reader.lines() {
@@ -412,7 +410,7 @@ impl CommandActor {
                 Child::Exited(val) => *val,
                 child => panic!("invalid death invite acceptance: {child:?}"),
             };
-            invite.rsvp::<Self, Context<Self>>(self.op_name.clone(), status, cx);
+            invite.rsvp::<Self, Context<Self>>(self.operator.name.clone(), status, cx);
         }
     }
 }
@@ -425,19 +423,20 @@ impl Actor for CommandActor {
         self.self_addr = Some(addr.clone());
 
         self.console.do_send(RegisterPanel {
-            name: self.op_name.clone(),
+            name: self.operator.name.clone(),
             addr,
-            colors: self.colors.clone(),
+            colors: self.operator.colors.clone(),
         });
 
-        let watches = self.operator.watch.resolve();
+        let watches = self.operator.task.watch.resolve();
 
         if self.watch && !watches.is_empty() {
             let mut on = GlobSetBuilder::new();
-            for pattern in self.operator.watch.resolve() {
+            for pattern in watches {
                 on.add(
                     Glob::new(
                         &self
+                            .operator
                             .cwd
                             .join(pattern)
                             .absolutize()
@@ -449,10 +448,11 @@ impl Actor for CommandActor {
             }
 
             let mut off = GlobSetBuilder::new();
-            for pattern in self.operator.ignore.resolve() {
+            for pattern in self.operator.task.ignore.resolve() {
                 off.add(
                     Glob::new(
                         &self
+                            .operator
                             .cwd
                             .join(pattern)
                             .absolutize()
@@ -616,7 +616,7 @@ impl Handler<StdoutTerminated> for CommandActor {
             }
             let exit = self.child.exit_status();
             self.console.do_send(PanelStatus {
-                panel_name: self.op_name.clone(),
+                panel_name: self.operator.name.clone(),
                 status: exit,
             });
             self.accept_death_invite(cx);
@@ -648,7 +648,7 @@ impl Handler<PermaDeathInvite> for CommandActor {
             _ => None,
         };
         if let Some(status) = status {
-            evt.rsvp::<Self, Self::Context>(self.op_name.clone(), status, cx);
+            evt.rsvp::<Self, Self::Context>(self.operator.name.clone(), status, cx);
         } else {
             self.death_invite = Some(evt);
         }

@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::{env, future::Future};
 
 use anyhow::{Ok, Result};
@@ -9,6 +10,8 @@ use crate::actors::command::{CommandActorsBuilder, WaitStatus};
 use crate::actors::console::RegisterPanel;
 use crate::actors::watcher::WatchGlob;
 use crate::args::Args;
+use crate::config::{ConfigInner, RawConfig};
+use crate::utils::find_config_path;
 use crate::{
     actors::{
         console::{ConsoleActor, Output, PanelStatus, TermEvent},
@@ -16,7 +19,6 @@ use crate::{
         watcher::WatcherActor,
     },
     config::Config,
-    utils::recurse_config_file,
 };
 use actix::{actors::mocker::Mocker, prelude::*};
 use assert_cmd::Command;
@@ -59,14 +61,20 @@ fn end_to_end() {
     cmd.arg("-h").assert().success();
 }
 
+fn config_from_str(s: &str) -> Result<Config> {
+    let raw: RawConfig = s.parse()?;
+    Ok(Arc::new(ConfigInner::from_raw(raw, env::current_dir()?)?).into())
+}
+
 #[test]
 fn hello() {
     within_system(async move {
-        let config: Config = r#"
+        let config = config_from_str(
+            r#"
             test:
                 command: ls
-            "#
-        .parse()?;
+            "#,
+        )?;
 
         let console = mock_actor!(ConsoleActor, {
             msg: Output => {
@@ -90,15 +98,9 @@ fn hello() {
             ))
             .await?;
 
-        let commands = CommandActorsBuilder::new(
-            config,
-            console,
-            watcher,
-            env::current_dir().unwrap(),
-            Default::default(),
-        )
-        .build()
-        .await?;
+        let commands = CommandActorsBuilder::new(config, console, watcher)
+            .build()
+            .await?;
 
         let status = commands
             .get(&"test".to_string())
@@ -135,7 +137,7 @@ long_test:
     command: 'print("my que to enter")'
     depends_on:
         - long_test_dep"#;
-        let config: Config = config_raw.parse()?;
+        let config: Config = config_from_str(config_raw)?;
 
         let console = mock_actor!(ConsoleActor, {
             msg: Output => {
@@ -151,15 +153,9 @@ long_test:
             _msg: WatchGlob => Some(()),
         });
 
-        let commands = CommandActorsBuilder::new(
-            config,
-            console,
-            watcher,
-            env::current_dir().unwrap(),
-            Default::default(),
-        )
-        .build()
-        .await?;
+        let commands = CommandActorsBuilder::new(config, console, watcher)
+            .build()
+            .await?;
 
         GrimReaperActor::start_new(commands).await?;
         Ok(())
@@ -192,10 +188,7 @@ fn config_search_recursive() {
     let config_name = "whiz.yaml";
     let expected_if_exist = Path::new(&new_cwd).join(config_name).display().to_string();
 
-    let config_got = recurse_config_file(config_name);
-    assert!(config_got.is_ok());
-
-    let (_, config_path) = config_got.unwrap();
+    let config_path = find_config_path(&env::current_dir().unwrap(), config_name).unwrap();
     let config_path_got = config_path.display().to_string();
 
     println!(" Config file located at {}", config_path_got);

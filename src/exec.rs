@@ -46,11 +46,15 @@ impl ExecBuilder {
         })
     }
 
-    pub fn build(self) -> Result<Exec> {
-        Ok(Exec::cmd(self.cmd)
+    pub fn build(&self) -> Result<Exec> {
+        Ok(Exec::cmd(self.cmd.clone())
             .args(&self.args)
             .cwd(&self.cwd)
             .env_extend(&self.env))
+    }
+
+    pub fn to_string(&self) -> String {
+        format!("EXEC: {} {:?} at {:?}", self.cmd, self.args, self.cwd)
     }
 }
 
@@ -63,7 +67,7 @@ impl ConfigInner {
 }
 
 impl Task {
-    fn get_exec_command(&self) -> Result<(String, Vec<String>)> {
+    pub fn get_exec_command(&self) -> Result<(String, Vec<String>)> {
         let default_entrypoint = {
             #[cfg(not(target_os = "windows"))]
             {

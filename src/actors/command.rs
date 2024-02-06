@@ -3,7 +3,7 @@ use actix::prelude::*;
 
 use anyhow::Result;
 use chrono::{DateTime, Local};
-use subprocess::{Exec, ExitStatus, Popen, Redirection};
+use subprocess::{ExitStatus, Popen, Redirection};
 
 use globset::{Glob, GlobSetBuilder};
 use path_absolutize::*;
@@ -17,14 +17,13 @@ use std::{
     path::PathBuf,
 };
 
-use shlex;
-
 use crate::actors::grim_reaper::PermaDeathInvite;
 use crate::config::color::ColorOption;
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
 };
+use crate::exec::ExecBuilder;
 
 use super::console::{Output, PanelStatus, RegisterPanel};
 use super::watcher::{IgnorePath, WatchGlob};
@@ -162,7 +161,6 @@ impl CommandActorsBuilder {
             verbose,
             watch_enabled_globally,
         } = self;
-        let shared_env = config.get_shared_env().await?;
 
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
 
@@ -180,7 +178,7 @@ impl CommandActorsBuilder {
                 .clone();
             let cwd = op.get_absolute_workdir(&config.base_dir);
 
-            let env = op.get_full_env(&cwd, &shared_env).await?;
+            let exec_builder = ExecBuilder::new(op, &config).await?;
 
             let actor = CommandActor::new(
                 op_name.clone(),
@@ -193,11 +191,10 @@ impl CommandActorsBuilder {
                     .collect(),
                 cwd.clone(),
                 verbose,
-                env.into_iter().collect(),
                 task_pipes,
                 colors,
-                op.entrypoint.clone(),
                 watch_enabled_globally,
+                exec_builder,
             )
             .start();
 
@@ -224,12 +221,11 @@ pub struct CommandActor {
     pending_upstream: BTreeMap<String, usize>,
     verbose: bool,
     started_at: DateTime<Local>,
-    env: Vec<(String, String)>,
     pipes: Vec<Pipe>,
     colors: Vec<ColorOption>,
-    entrypoint: Option<String>,
     watch: bool,
     death_invite: Option<PermaDeathInvite>,
+    exec_builder: ExecBuilder,
 }
 
 impl CommandActor {
@@ -242,11 +238,10 @@ impl CommandActor {
         nexts: Vec<Addr<CommandActor>>,
         cwd: PathBuf,
         verbose: bool,
-        env: Vec<(String, String)>,
         pipes: Vec<Pipe>,
         colors: Vec<ColorOption>,
-        entrypoint: Option<String>,
         watch: bool,
+        exec_builder: ExecBuilder,
     ) -> Self {
         Self {
             op_name,
@@ -261,12 +256,11 @@ impl CommandActor {
             pending_upstream: BTreeMap::default(),
             verbose,
             started_at: Local::now(),
-            env,
             pipes,
             colors,
-            entrypoint,
             watch,
             death_invite: None,
+            exec_builder,
         }
     }
 
@@ -312,66 +306,16 @@ impl CommandActor {
     }
 
     fn reload(&mut self) -> Result<()> {
-        let args = &self.operator.command;
+        self.log_debug(self.exec_builder.to_string());
+        self.console.do_send(PanelStatus {
+            panel_name: self.op_name.clone(),
+            status: None,
+        });
 
-        let default_entrypoint = {
-            #[cfg(not(target_os = "windows"))]
-            {
-                "bash -c"
-            }
-
-            #[cfg(target_os = "windows")]
-            {
-                "cmd /c"
-            }
-        };
-
-        let exec = {
-            let entrypoint_lex = match &self.entrypoint {
-                Some(e) => {
-                    if !e.is_empty() {
-                        e.as_str()
-                    } else {
-                        default_entrypoint
-                    }
-                }
-                None => default_entrypoint,
-            };
-
-            let entrypoint_split = {
-                let mut s = shlex::split(entrypoint_lex).unwrap();
-
-                match args {
-                    Some(a) => {
-                        s.push(a.to_owned());
-                        s
-                    }
-                    None => s,
-                }
-            };
-
-            let entrypoint = &entrypoint_split[0];
-            let nargs = entrypoint_split[1..]
-                .iter()
-                .filter(|s| !s.is_empty())
-                .cloned()
-                .collect::<Vec<String>>();
-
-            self.log_debug(format!(
-                "EXEC: {} {:?} at {:?}",
-                entrypoint_lex, nargs, self.cwd
-            ));
-            self.console.do_send(PanelStatus {
-                panel_name: self.op_name.clone(),
-                status: None,
-            });
-
-            Exec::cmd(entrypoint).args(&nargs)
-        };
-
-        let mut p = exec
-            .cwd(&self.cwd)
-            .env_extend(&self.env)
+        let mut p = self
+            .exec_builder
+            .build()
+            .unwrap()
             .stdout(Redirection::Pipe)
             .stderr(Redirection::Merge)
             .popen()

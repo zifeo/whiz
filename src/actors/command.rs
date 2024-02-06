@@ -181,7 +181,7 @@ impl CommandActorsBuilder {
             watch_enabled_globally,
             colors_map,
         } = self;
-        let shared_env = config.get_shared_env(base_dir.clone()).await?;
+        let shared_env = config.get_shared_env().await?;
 
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
 

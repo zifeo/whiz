@@ -1,13 +1,10 @@
 use actix::System;
 use anyhow::{anyhow, Result};
 use crossterm::style::Stylize;
-use std::{fs::File, path::PathBuf};
 
 use crate::{args::Execute, config::Config, exec::ExecBuilder};
 
-pub async fn start(opts: &Execute, config_file: File, base_dir: PathBuf) -> Result<()> {
-    let config = Config::from_file(&config_file).map_err(|err| anyhow!("config error: {}", err))?;
-
+pub async fn start(opts: &Execute, config: Config) -> Result<()> {
     let mut queue: Vec<String> = Vec::new();
     queue.push(opts.task.clone());
 
@@ -44,7 +41,7 @@ pub async fn start(opts: &Execute, config_file: File, base_dir: PathBuf) -> Resu
             task = task_name.as_str().cyan(),
         );
 
-        let exec_builder = ExecBuilder::new(task, &config, base_dir.clone()).await?;
+        let exec_builder = ExecBuilder::new(task, &config).await?;
 
         let exit_status = tokio::task::spawn_blocking(move || {
             let exec = exec_builder

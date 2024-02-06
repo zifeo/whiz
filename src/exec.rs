@@ -7,7 +7,7 @@ use std::{
 };
 use subprocess::Exec;
 
-use crate::config::{Config, Task};
+use crate::config::{Config, ConfigInner, Task};
 
 pub struct ExecBuilder {
     env: Vec<(String, String)>,
@@ -17,13 +17,13 @@ pub struct ExecBuilder {
 }
 
 impl ExecBuilder {
-    pub async fn new(task: &Task, config: &Config, base_dir: PathBuf) -> Result<Self> {
+    pub async fn new(task: &Task, config: &Config) -> Result<Self> {
         let cwd = match task.workdir.clone() {
-            Some(path) => base_dir.join(path),
-            None => base_dir.clone(),
+            Some(path) => config.base_dir.join(path),
+            None => config.base_dir.clone(),
         };
 
-        let shared_env = config.get_shared_env(base_dir).await?;
+        let shared_env = config.get_shared_env().await?;
         let env = task
             .get_full_env(&cwd, &shared_env)
             .await?
@@ -48,12 +48,11 @@ impl ExecBuilder {
     }
 }
 
-impl Config {
-    // TODO base_dir field to Config
-    pub async fn get_shared_env(&self, base_dir: PathBuf) -> Result<HashMap<String, String>> {
+impl ConfigInner {
+    pub async fn get_shared_env(&self) -> Result<HashMap<String, String>> {
         let mut shared_env = HashMap::from_iter(std::env::vars());
         shared_env.extend(lade_sdk::resolve(&self.env, &shared_env)?);
-        return lade_sdk::hydrate(shared_env, base_dir).await;
+        return lade_sdk::hydrate(shared_env, self.base_dir.clone()).await;
     }
 }
 

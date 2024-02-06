@@ -6,21 +6,18 @@ use chrono::{Duration, Utc};
 use clap::Parser;
 use self_update::{backends::github::Update, cargo_crate_version, update::UpdateStatus};
 use semver::Version;
-use std::collections::HashMap;
 use std::eprintln;
-use std::fs::File;
-use std::path::PathBuf;
 use tokio::time::{sleep, Duration as TokioDuration};
 use whiz::actors::command::CommandActorsBuilder;
-use whiz::config::color::ColorOption;
-use whiz::config::pipe::Pipe;
+use whiz::config::ops;
+use whiz::config::ConfigBuilder;
 use whiz::serial_mode;
+use whiz::utils::find_config_path;
 use whiz::{
     actors::{console::ConsoleActor, watcher::WatcherActor},
     args::Command,
     config::Config,
     global_config::GlobalConfig,
-    utils::recurse_config_file,
 };
 mod graph;
 
@@ -116,39 +113,6 @@ fn main() -> Result<()> {
     std::process::exit(code);
 }
 
-struct ExtendedConfig {
-    config: Config,
-    base_dir: PathBuf,
-    pipes_map: HashMap<String, Vec<Pipe>>,
-    colors_map: HashMap<String, Vec<ColorOption>>,
-}
-
-impl ExtendedConfig {
-    fn new(config_file: File, config_path: PathBuf, filter: &[String]) -> Result<Self> {
-        let mut config =
-            Config::from_file(&config_file).map_err(|err| anyhow!("config error: {}", err))?;
-
-        let pipes_map = config
-            .get_pipes_map()
-            .map_err(|err| anyhow!("dag error: {}", err))?;
-
-        let colors_map = config
-            .get_colors_map()
-            .map_err(|err| anyhow!("colors error: {}", err))?;
-
-        config
-            .filter_jobs(filter)
-            .map_err(|err| anyhow!("argument error: {}", err))?;
-
-        Ok(Self {
-            config,
-            base_dir: config_path.parent().unwrap().to_path_buf(),
-            colors_map,
-            pipes_map,
-        })
-    }
-}
-
 async fn run(args: Args) -> Result<()> {
     #[cfg(target_os = "windows")]
     std::env::set_var(
@@ -163,15 +127,14 @@ async fn run(args: Args) -> Result<()> {
         .await
         .unwrap_or_else(|e| eprintln!("cannot check for update: {}", e));
 
-    let (config_file, config_path) =
-        recurse_config_file(&args.file).map_err(|err| anyhow!("file error: {}", err))?;
+    let config = ConfigBuilder::new(find_config_path(
+        &std::env::current_dir().unwrap(),
+        &args.file,
+    )?)
+    .build()?;
 
     let Some(command) = args.command.as_ref() else {
-        return start_default_mode(
-            ExtendedConfig::new(config_file, config_path, &args.run)?,
-            args,
-        )
-        .await;
+        return start_default_mode(config, args).await;
     };
 
     match command {
@@ -180,22 +143,16 @@ async fn run(args: Args) -> Result<()> {
         }
 
         Command::ListJobs => {
-            let config =
-                Config::from_file(&config_file).map_err(|err| anyhow!("config error: {}", err))?;
-
-            let formatted_list_of_jobs = config.get_formatted_list_of_jobs();
+            let formatted_list_of_jobs = ops::get_formatted_list_of_jobs(&config.ops);
             println!("List of jobs:\n{formatted_list_of_jobs}");
             System::current().stop_with_code(0);
             return Ok(());
         }
 
         Command::Graph(opts) => {
-            let config =
-                Config::from_file(&config_file).map_err(|err| anyhow!("config error: {}", err))?;
-
             let filtered_tasks: Vec<graph::Task> = config
                 .ops
-                .into_iter()
+                .iter()
                 .map(|task| graph::Task {
                     name: task.0.to_owned(),
                     depends_on: task.1.depends_on.resolve(),
@@ -217,34 +174,31 @@ async fn run(args: Args) -> Result<()> {
         }
 
         Command::Execute(opts) => {
-            let base_dir = config_path.parent().unwrap().to_path_buf();
-            serial_mode::start(opts, config_file, base_dir).await?;
+            serial_mode::start(opts, config).await?;
             System::current().stop_with_code(0);
             return Ok(());
         }
     }
 }
 
-async fn start_default_mode(extended_config: ExtendedConfig, args: Args) -> Result<()> {
-    let ExtendedConfig {
-        config,
-        base_dir,
-        pipes_map,
-        colors_map,
-    } = extended_config;
-
+async fn start_default_mode(config: Config, args: Args) -> Result<()> {
     let console =
         ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned()), args.timestamp).start();
-    let watcher = WatcherActor::new(base_dir.clone()).start();
+    let watcher = WatcherActor::new(config.base_dir.clone()).start();
+
+    let base_dir = config.base_dir.clone();
+    let colors_map = config.colors_map.clone();
+    let pipes_map = config.pipes_map.clone();
+
     let cmds = CommandActorsBuilder::new(
         config,
         console.clone(),
         watcher,
-        base_dir.clone(),
-        colors_map,
+        base_dir,   // TODO remove param
+        colors_map, // TODO: remove param
     )
     .verbose(args.verbose)
-    .pipes_map(pipes_map)
+    .pipes_map(pipes_map.clone()) // TODO: remove
     .globally_enable_watch(if args.exit_after { false } else { args.watch })
     .build()
     .await

@@ -66,7 +66,9 @@ pub async fn start(opts: &Execute, config: Config) -> Result<()> {
             status = format!("{:?}", exit_status).yellow(),
         );
 
-        System::current().stop_with_code(1);
+        if !exit_status.success() {
+            System::current().stop_with_code(1);
+        }
 
         executed_tasks.push(task_name.clone());
     }

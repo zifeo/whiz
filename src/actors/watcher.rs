@@ -5,20 +5,21 @@ use ignore::gitignore::GitignoreBuilder;
 use notify::event::ModifyKind;
 use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use super::command::{CommandActor, Reload};
 
 pub struct WatcherActor {
     watcher: Option<RecommendedWatcher>,
     globs: Vec<WatchGlob>,
-    base_dir: PathBuf,
+    base_dir: Arc<Path>,
     // List of file paths to ignore on the watcher
     ignore: HashSet<PathBuf>,
 }
 
 impl WatcherActor {
-    pub fn new(base_dir: PathBuf) -> Self {
+    pub fn new(base_dir: Arc<Path>) -> Self {
         Self {
             watcher: None,
             globs: Vec::default(),

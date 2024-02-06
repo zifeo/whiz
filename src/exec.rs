@@ -9,6 +9,15 @@ use subprocess::Exec;
 
 use crate::config::{Config, ConfigInner, Task};
 
+impl Task {
+    pub fn get_absolute_workdir(&self, base_dir: &Path) -> PathBuf {
+        match &self.workdir {
+            Some(path) => base_dir.join(path),
+            None => base_dir.to_path_buf(),
+        }
+    }
+}
+
 pub struct ExecBuilder {
     env: Vec<(String, String)>,
     cwd: PathBuf,
@@ -18,10 +27,7 @@ pub struct ExecBuilder {
 
 impl ExecBuilder {
     pub async fn new(task: &Task, config: &Config) -> Result<Self> {
-        let cwd = match task.workdir.clone() {
-            Some(path) => config.base_dir.join(path),
-            None => config.base_dir.clone(),
-        };
+        let cwd = task.get_absolute_workdir(&config.base_dir);
 
         let shared_env = config.get_shared_env().await?;
         let env = task
@@ -52,7 +58,7 @@ impl ConfigInner {
     pub async fn get_shared_env(&self) -> Result<HashMap<String, String>> {
         let mut shared_env = HashMap::from_iter(std::env::vars());
         shared_env.extend(lade_sdk::resolve(&self.env, &shared_env)?);
-        return lade_sdk::hydrate(shared_env, self.base_dir.clone()).await;
+        return lade_sdk::hydrate(shared_env, self.base_dir.to_path_buf()).await;
     }
 }
 

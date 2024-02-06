@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
 };
@@ -98,7 +98,7 @@ struct RawConfig {
 
 #[derive(Debug, Clone)]
 pub struct ConfigInner {
-    pub base_dir: PathBuf,
+    pub base_dir: Arc<Path>,
     pub env: HashMap<String, String>,
     pub ops: Ops,
     pub pipes_map: HashMap<String, Vec<Pipe>>,
@@ -236,7 +236,7 @@ impl ConfigBuilder {
             .context("Error while getting colors")?;
 
         let config = Arc::new(ConfigInner {
-            base_dir: self.path.parent().unwrap().to_path_buf(),
+            base_dir: self.path.parent().unwrap().into(),
             env: config.env,
             ops: config.ops,
             pipes_map,

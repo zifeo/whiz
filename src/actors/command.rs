@@ -125,35 +125,19 @@ pub struct CommandActorsBuilder {
     config: Config,
     console: Addr<ConsoleAct>,
     watcher: Addr<WatcherAct>,
-    base_dir: PathBuf,
     verbose: bool,
-    colors_map: HashMap<String, Vec<ColorOption>>,
-    pipes_map: HashMap<String, Vec<Pipe>>,
     watch_enabled_globally: bool,
 }
 
 impl CommandActorsBuilder {
-    pub fn new(
-        config: Config,
-        console: Addr<ConsoleAct>,
-        watcher: Addr<WatcherAct>,
-        base_dir: PathBuf,
-        colors_map: HashMap<String, Vec<ColorOption>>,
-    ) -> Self {
+    pub fn new(config: Config, console: Addr<ConsoleAct>, watcher: Addr<WatcherAct>) -> Self {
         Self {
             config,
             console,
             watcher,
-            base_dir,
             verbose: false,
-            pipes_map: Default::default(),
             watch_enabled_globally: true,
-            colors_map,
         }
-    }
-
-    pub fn pipes_map(self, pipes_map: HashMap<String, Vec<Pipe>>) -> Self {
-        Self { pipes_map, ..self }
     }
 
     pub fn verbose(self, toggle: bool) -> Self {
@@ -175,11 +159,8 @@ impl CommandActorsBuilder {
             config,
             console,
             watcher,
-            base_dir,
             verbose,
-            pipes_map,
             watch_enabled_globally,
-            colors_map,
         } = self;
         let shared_env = config.get_shared_env().await?;
 
@@ -187,12 +168,17 @@ impl CommandActorsBuilder {
 
         for (op_name, nexts) in config.build_dag().unwrap().into_iter() {
             let op = config.ops.get(&op_name).unwrap();
-            let task_pipes = pipes_map.get(&op_name).unwrap_or(&Vec::new()).clone();
-            let colors = colors_map.get(&op_name).unwrap_or(&Vec::new()).clone();
-            let cwd = match op.workdir.clone() {
-                Some(path) => base_dir.join(path),
-                None => base_dir.clone(),
-            };
+            let task_pipes = config
+                .pipes_map
+                .get(&op_name)
+                .unwrap_or(&Vec::new())
+                .clone();
+            let colors = config
+                .colors_map
+                .get(&op_name)
+                .unwrap_or(&Vec::new())
+                .clone();
+            let cwd = op.get_absolute_workdir(&config.base_dir);
 
             let env = op.get_full_env(&cwd, &shared_env).await?;
 

@@ -186,23 +186,12 @@ async fn start_default_mode(config: Config, args: Args) -> Result<()> {
         ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned()), args.timestamp).start();
     let watcher = WatcherActor::new(config.base_dir.clone()).start();
 
-    let base_dir = config.base_dir.clone();
-    let colors_map = config.colors_map.clone();
-    let pipes_map = config.pipes_map.clone();
-
-    let cmds = CommandActorsBuilder::new(
-        config,
-        console.clone(),
-        watcher,
-        base_dir,   // TODO remove param
-        colors_map, // TODO: remove param
-    )
-    .verbose(args.verbose)
-    .pipes_map(pipes_map.clone()) // TODO: remove
-    .globally_enable_watch(if args.exit_after { false } else { args.watch })
-    .build()
-    .await
-    .map_err(|err| anyhow!("error spawning commands: {}", err))?;
+    let cmds = CommandActorsBuilder::new(config, console.clone(), watcher)
+        .verbose(args.verbose)
+        .globally_enable_watch(if args.exit_after { false } else { args.watch })
+        .build()
+        .await
+        .map_err(|err| anyhow!("error spawning commands: {}", err))?;
 
     if args.exit_after {
         whiz::actors::grim_reaper::GrimReaperActor::start_new(cmds).await?;

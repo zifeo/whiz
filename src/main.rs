@@ -6,9 +6,15 @@ use chrono::{Duration, Utc};
 use clap::Parser;
 use self_update::{backends::github::Update, cargo_crate_version, update::UpdateStatus};
 use semver::Version;
+use std::collections::HashMap;
 use std::eprintln;
+use std::fs::File;
+use std::path::PathBuf;
 use tokio::time::{sleep, Duration as TokioDuration};
 use whiz::actors::command::CommandActorsBuilder;
+use whiz::config::color::ColorOption;
+use whiz::config::pipe::Pipe;
+use whiz::serial_mode;
 use whiz::{
     actors::{console::ConsoleActor, watcher::WatcherActor},
     args::Command,
@@ -103,11 +109,44 @@ fn main() -> Result<()> {
         run(args).await.unwrap_or_else(|e| {
             eprintln!("{}", e);
             System::current().stop_with_code(1);
-        })
+        });
     });
 
     let code = system.run_with_code()?;
     std::process::exit(code);
+}
+
+struct ExtendedConfig {
+    config: Config,
+    base_dir: PathBuf,
+    pipes_map: HashMap<String, Vec<Pipe>>,
+    colors_map: HashMap<String, Vec<ColorOption>>,
+}
+
+impl ExtendedConfig {
+    fn new(config_file: File, config_path: PathBuf, filter: &[String]) -> Result<Self> {
+        let mut config =
+            Config::from_file(&config_file).map_err(|err| anyhow!("config error: {}", err))?;
+
+        let pipes_map = config
+            .get_pipes_map()
+            .map_err(|err| anyhow!("dag error: {}", err))?;
+
+        let colors_map = config
+            .get_colors_map()
+            .map_err(|err| anyhow!("colors error: {}", err))?;
+
+        config
+            .filter_jobs(filter)
+            .map_err(|err| anyhow!("argument error: {}", err))?;
+
+        Ok(Self {
+            config,
+            base_dir: config_path.parent().unwrap().to_path_buf(),
+            colors_map,
+            pipes_map,
+        })
+    }
 }
 
 async fn run(args: Args) -> Result<()> {
@@ -127,52 +166,72 @@ async fn run(args: Args) -> Result<()> {
     let (config_file, config_path) =
         recurse_config_file(&args.file).map_err(|err| anyhow!("file error: {}", err))?;
 
-    let mut config =
-        Config::from_file(&config_file).map_err(|err| anyhow!("config error: {}", err))?;
+    let Some(command) = args.command.as_ref() else {
+        return start_default_mode(
+            ExtendedConfig::new(config_file, config_path, &args.run)?,
+            args,
+        )
+        .await;
+    };
 
-    let pipes_map = config
-        .get_pipes_map()
-        .map_err(|err| anyhow!("dag error: {}", err))?;
+    match command {
+        Command::Upgrade(_) => {
+            unreachable!();
+        }
 
-    let colors_map = config
-        .get_colors_map()
-        .map_err(|err| anyhow!("colors error: {}", err))?;
+        Command::ListJobs => {
+            let config =
+                Config::from_file(&config_file).map_err(|err| anyhow!("config error: {}", err))?;
 
-    config
-        .filter_jobs(&args.run)
-        .map_err(|err| anyhow!("argument error: {}", err))?;
+            let formatted_list_of_jobs = config.get_formatted_list_of_jobs();
+            println!("List of jobs:\n{formatted_list_of_jobs}");
+            System::current().stop_with_code(0);
+            return Ok(());
+        }
 
-    if let Some(Command::ListJobs) = args.command {
-        let formatted_list_of_jobs = config.get_formatted_list_of_jobs();
-        println!("List of jobs:\n{formatted_list_of_jobs}");
-        return Ok(());
+        Command::Graph(opts) => {
+            let config =
+                Config::from_file(&config_file).map_err(|err| anyhow!("config error: {}", err))?;
+
+            let filtered_tasks: Vec<graph::Task> = config
+                .ops
+                .into_iter()
+                .map(|task| graph::Task {
+                    name: task.0.to_owned(),
+                    depends_on: task.1.depends_on.resolve(),
+                })
+                .collect();
+
+            match graph::draw_graph(filtered_tasks, opts.boxed)
+                .map_err(|err| anyhow!("Error visualizing graph: {}", err))
+            {
+                Result::Ok(..) => {
+                    System::current().stop_with_code(0);
+                    return Ok(());
+                }
+                Err(e) => {
+                    System::current().stop_with_code(1);
+                    return Err(e);
+                }
+            };
+        }
+
+        Command::Execute(opts) => {
+            let base_dir = config_path.parent().unwrap().to_path_buf();
+            serial_mode::start(opts, config_file, base_dir).await?;
+            System::current().stop_with_code(0);
+            return Ok(());
+        }
     }
+}
 
-    if let Some(Command::Graph(opts)) = args.command {
-        let filtered_tasks: Vec<graph::Task> = config
-            .ops
-            .into_iter()
-            .map(|task| graph::Task {
-                name: task.0.to_owned(),
-                depends_on: task.1.depends_on.resolve(),
-            })
-            .collect();
-
-        match graph::draw_graph(filtered_tasks, opts.boxed)
-            .map_err(|err| anyhow!("Error visualizing graph: {}", err))
-        {
-            Result::Ok(..) => {
-                System::current().stop_with_code(0);
-                return Ok(());
-            }
-            Err(e) => {
-                System::current().stop_with_code(1);
-                return Err(e);
-            }
-        };
-    }
-
-    let base_dir = config_path.parent().unwrap().to_path_buf();
+async fn start_default_mode(extended_config: ExtendedConfig, args: Args) -> Result<()> {
+    let ExtendedConfig {
+        config,
+        base_dir,
+        pipes_map,
+        colors_map,
+    } = extended_config;
 
     let console =
         ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned()), args.timestamp).start();

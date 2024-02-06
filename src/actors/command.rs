@@ -1,11 +1,10 @@
 use actix::clock::sleep;
 use actix::prelude::*;
 
-use anyhow::{Context as ErrorContext, Result};
+use anyhow::Result;
 use chrono::{DateTime, Local};
 use subprocess::{Exec, ExitStatus, Popen, Redirection};
 
-use dotenv_parser::parse_dotenv;
 use globset::{Glob, GlobSetBuilder};
 use path_absolutize::*;
 use std::collections::BTreeMap;
@@ -20,8 +19,8 @@ use std::{
 
 use shlex;
 
-use crate::config::color::ColorOption;
 use crate::actors::grim_reaper::PermaDeathInvite;
+use crate::config::color::ColorOption;
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
@@ -182,9 +181,7 @@ impl CommandActorsBuilder {
             watch_enabled_globally,
             colors_map,
         } = self;
-        let mut shared_env = HashMap::from_iter(std::env::vars());
-        shared_env.extend(lade_sdk::resolve(&config.env, &shared_env)?);
-        let shared_env = lade_sdk::hydrate(shared_env, base_dir.clone()).await?;
+        let shared_env = config.get_shared_env(base_dir.clone()).await?;
 
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
 
@@ -197,22 +194,7 @@ impl CommandActorsBuilder {
                 None => base_dir.clone(),
             };
 
-            let mut env = HashMap::default();
-            for env_file in op.env_file.resolve() {
-                let path = cwd.join(env_file.clone());
-                let file = fs::read_to_string(path.clone())
-                    .with_context(|| format!("cannot find env_file {:?}", path.clone()))?;
-                let values = parse_dotenv(&file)
-                    .map_err(anyhow::Error::msg)
-                    .with_context(|| format!("cannot parse env_file {:?}", path))?
-                    .into_iter()
-                    .map(|(k, v)| (k, v.replace("\\n", "\n")));
-
-                env.extend(lade_sdk::resolve(&values.collect(), &shared_env)?);
-            }
-            env.extend(lade_sdk::resolve(&op.env.clone(), &shared_env)?);
-            let mut env = lade_sdk::hydrate(env, cwd.clone()).await?;
-            env.extend(shared_env.clone());
+            let env = op.get_full_env(&cwd, &shared_env).await?;
 
             let actor = CommandActor::new(
                 op_name.clone(),
@@ -440,7 +422,7 @@ impl CommandActor {
                                 console.do_send(RegisterPanel {
                                     name: tab_name.to_owned(),
                                     addr: addr.clone(),
-                                    colors: task_colors.clone()
+                                    colors: task_colors.clone(),
                                 });
                             }
                             console.do_send(Output::now(tab_name.to_owned(), line.clone(), false));
@@ -515,7 +497,7 @@ impl Actor for CommandActor {
         self.console.do_send(RegisterPanel {
             name: self.op_name.clone(),
             addr,
-            colors: self.colors.clone()
+            colors: self.colors.clone(),
         });
 
         let watches = self.operator.watch.resolve();

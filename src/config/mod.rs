@@ -127,7 +127,7 @@ impl Config {
     /// Doesn't filter if `run` is empty.
     ///
     /// Fails if a job in `run` is not set in the config file.
-    pub fn filter_jobs(&mut self, run: &Vec<String>) -> Result<()> {
+    pub fn filter_jobs(&mut self, run: &[String]) -> Result<()> {
         for job_name in run {
             if self.ops.get(job_name).is_none() {
                 let formatted_list_of_jobs = self.get_formatted_list_of_jobs();
@@ -140,7 +140,7 @@ impl Config {
 
         if !run.is_empty() {
             let mut filtered_jobs = self.get_all_dependencies(run);
-            filtered_jobs.extend(run.clone().into_iter());
+            filtered_jobs.extend(run.to_vec().into_iter());
             let filtered_jobs: HashSet<String> = HashSet::from_iter(filtered_jobs.into_iter());
             self.ops = self
                 .ops

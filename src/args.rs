@@ -18,6 +18,12 @@ pub struct Graph {
     pub boxed: bool,
 }
 
+#[derive(Parser, Debug, Clone)]
+pub struct Execute {
+    #[arg()]
+    pub task: String,
+}
+
 /// Set of subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Command {
@@ -27,6 +33,9 @@ pub enum Command {
     Graph(Graph),
     /// List all the jobs set in the config file
     ListJobs,
+    /// Execute a specific job; running its dependencies serially
+    #[command(name = "x")]
+    Execute(Execute),
 }
 
 #[derive(Parser, Debug)]

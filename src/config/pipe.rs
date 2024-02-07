@@ -6,7 +6,7 @@ use url::Url;
 
 /// A pipe represents the redirection of the output of a task
 /// matched by a regular expression to an [`OutputRedirection`].
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Pipe {
     /// Regular expression used to capture the output of the task and
     /// redirect it.
@@ -29,7 +29,7 @@ impl Pipe {
 }
 
 /// Set of places to which the output of a task can be redirected.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum OutputRedirection {
     /// Indicates that the output of a task should be sent
     /// to a new virtual tab with the given name.

@@ -1,11 +1,10 @@
 use actix::clock::sleep;
 use actix::prelude::*;
 
-use anyhow::{Context as ErrorContext, Result};
+use anyhow::Result;
 use chrono::{DateTime, Local};
-use subprocess::{Exec, ExitStatus, Popen, Redirection};
+use subprocess::{ExitStatus, Popen, Redirection};
 
-use dotenv_parser::parse_dotenv;
 use globset::{Glob, GlobSetBuilder};
 use path_absolutize::*;
 use std::collections::BTreeMap;
@@ -18,14 +17,13 @@ use std::{
     path::PathBuf,
 };
 
-use shlex;
-
-use crate::config::color::ColorOption;
 use crate::actors::grim_reaper::PermaDeathInvite;
+use crate::config::color::ColorOption;
 use crate::config::{
     pipe::{OutputRedirection, Pipe},
     Config, Task,
 };
+use crate::exec::ExecBuilder;
 
 use super::console::{Output, PanelStatus, RegisterPanel};
 use super::watcher::{IgnorePath, WatchGlob};
@@ -48,6 +46,30 @@ mod prelude {
 }
 
 use prelude::*;
+
+pub struct ExtendedTask {
+    name: String,
+    task: Task,
+    pipes: Vec<Pipe>,
+    colors: Vec<ColorOption>,
+    cwd: PathBuf,
+}
+
+impl Task {
+    pub fn extend(&self, name: String, config: &Config) -> ExtendedTask {
+        let cwd = self.get_absolute_workdir(&config.base_dir);
+        let pipes = config.pipes_map.get(&name).unwrap_or(&Vec::new()).clone();
+        let colors = config.colors_map.get(&name).unwrap_or(&Vec::new()).clone();
+
+        ExtendedTask {
+            name,
+            task: self.clone(),
+            pipes,
+            colors,
+            cwd,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum Child {
@@ -126,35 +148,19 @@ pub struct CommandActorsBuilder {
     config: Config,
     console: Addr<ConsoleAct>,
     watcher: Addr<WatcherAct>,
-    base_dir: PathBuf,
     verbose: bool,
-    colors_map: HashMap<String, Vec<ColorOption>>,
-    pipes_map: HashMap<String, Vec<Pipe>>,
     watch_enabled_globally: bool,
 }
 
 impl CommandActorsBuilder {
-    pub fn new(
-        config: Config,
-        console: Addr<ConsoleAct>,
-        watcher: Addr<WatcherAct>,
-        base_dir: PathBuf,
-        colors_map: HashMap<String, Vec<ColorOption>>,
-    ) -> Self {
+    pub fn new(config: Config, console: Addr<ConsoleAct>, watcher: Addr<WatcherAct>) -> Self {
         Self {
             config,
             console,
             watcher,
-            base_dir,
             verbose: false,
-            pipes_map: Default::default(),
             watch_enabled_globally: true,
-            colors_map,
         }
-    }
-
-    pub fn pipes_map(self, pipes_map: HashMap<String, Vec<Pipe>>) -> Self {
-        Self { pipes_map, ..self }
     }
 
     pub fn verbose(self, toggle: bool) -> Self {
@@ -176,64 +182,33 @@ impl CommandActorsBuilder {
             config,
             console,
             watcher,
-            base_dir,
             verbose,
-            pipes_map,
             watch_enabled_globally,
-            colors_map,
         } = self;
-        let mut shared_env = HashMap::from_iter(std::env::vars());
-        shared_env.extend(lade_sdk::resolve(&config.env, &shared_env)?);
-        let shared_env = lade_sdk::hydrate(shared_env, base_dir.clone()).await?;
 
         let mut commands: HashMap<String, Addr<CommandActor>> = HashMap::new();
 
         for (op_name, nexts) in config.build_dag().unwrap().into_iter() {
-            let op = config.ops.get(&op_name).unwrap();
-            let task_pipes = pipes_map.get(&op_name).unwrap_or(&Vec::new()).clone();
-            let colors = colors_map.get(&op_name).unwrap_or(&Vec::new()).clone();
-            let cwd = match op.workdir.clone() {
-                Some(path) => base_dir.join(path),
-                None => base_dir.clone(),
-            };
+            let task = config.ops.get(&op_name).unwrap();
 
-            let mut env = HashMap::default();
-            for env_file in op.env_file.resolve() {
-                let path = cwd.join(env_file.clone());
-                let file = fs::read_to_string(path.clone())
-                    .with_context(|| format!("cannot find env_file {:?}", path.clone()))?;
-                let values = parse_dotenv(&file)
-                    .map_err(anyhow::Error::msg)
-                    .with_context(|| format!("cannot parse env_file {:?}", path))?
-                    .into_iter()
-                    .map(|(k, v)| (k, v.replace("\\n", "\n")));
-
-                env.extend(lade_sdk::resolve(&values.collect(), &shared_env)?);
-            }
-            env.extend(lade_sdk::resolve(&op.env.clone(), &shared_env)?);
-            let mut env = lade_sdk::hydrate(env, cwd.clone()).await?;
-            env.extend(shared_env.clone());
+            let exec_builder = ExecBuilder::new(task, &config).await?;
+            let op = task.extend(op_name.clone(), &config);
 
             let actor = CommandActor::new(
-                op_name.clone(),
-                op.clone(),
+                op,
                 console.clone(),
                 watcher.clone(),
                 nexts
                     .iter()
                     .map(|e| commands.get(e).unwrap().clone())
                     .collect(),
-                cwd.clone(),
                 verbose,
-                env.into_iter().collect(),
-                task_pipes,
-                colors,
-                op.entrypoint.clone(),
                 watch_enabled_globally,
+                exec_builder,
             )
             .start();
 
-            if op.depends_on.resolve().is_empty() {
+            if task.depends_on.resolve().is_empty() {
                 actor.do_send(Reload::Start)
             }
             commands.insert(op_name, actor);
@@ -244,66 +219,51 @@ impl CommandActorsBuilder {
 }
 
 pub struct CommandActor {
-    op_name: String,
-    operator: Task,
+    operator: ExtendedTask,
     console: Addr<ConsoleAct>,
     watcher: Addr<WatcherAct>,
     arbiter: Arbiter,
     child: Child,
     nexts: Vec<Addr<CommandActor>>,
-    cwd: PathBuf,
     self_addr: Option<Addr<CommandActor>>,
     pending_upstream: BTreeMap<String, usize>,
     verbose: bool,
     started_at: DateTime<Local>,
-    env: Vec<(String, String)>,
-    pipes: Vec<Pipe>,
-    colors: Vec<ColorOption>,
-    entrypoint: Option<String>,
     watch: bool,
     death_invite: Option<PermaDeathInvite>,
+    exec_builder: ExecBuilder,
 }
 
 impl CommandActor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        op_name: String,
-        operator: Task,
+        operator: ExtendedTask,
         console: Addr<ConsoleAct>,
         watcher: Addr<WatcherAct>,
         nexts: Vec<Addr<CommandActor>>,
-        cwd: PathBuf,
         verbose: bool,
-        env: Vec<(String, String)>,
-        pipes: Vec<Pipe>,
-        colors: Vec<ColorOption>,
-        entrypoint: Option<String>,
         watch: bool,
+        exec_builder: ExecBuilder,
     ) -> Self {
         Self {
-            op_name,
             operator,
             console,
             watcher,
             arbiter: Arbiter::new(),
             child: Child::NotStarted,
             nexts,
-            cwd,
             self_addr: None,
             pending_upstream: BTreeMap::default(),
             verbose,
             started_at: Local::now(),
-            env,
-            pipes,
-            colors,
-            entrypoint,
             watch,
             death_invite: None,
+            exec_builder,
         }
     }
 
     fn log_info(&self, log: String) {
-        let job_name = self.op_name.clone();
+        let job_name = self.operator.name.clone();
 
         self.console.do_send(Output::now(job_name, log, true));
     }
@@ -331,79 +291,29 @@ impl CommandActor {
 
     fn send_reload(&self) {
         for next in (self.nexts).iter() {
-            next.do_send(Reload::Op(self.op_name.clone()));
+            next.do_send(Reload::Op(self.operator.name.clone()));
         }
     }
 
     fn send_will_reload(&self) {
         for next in (self.nexts).iter() {
             next.do_send(WillReload {
-                op_name: self.op_name.clone(),
+                op_name: self.operator.name.clone(),
             });
         }
     }
 
     fn reload(&mut self) -> Result<()> {
-        let args = &self.operator.command;
+        self.log_debug(self.exec_builder.to_string());
+        self.console.do_send(PanelStatus {
+            panel_name: self.operator.name.clone(),
+            status: None,
+        });
 
-        let default_entrypoint = {
-            #[cfg(not(target_os = "windows"))]
-            {
-                "bash -c"
-            }
-
-            #[cfg(target_os = "windows")]
-            {
-                "cmd /c"
-            }
-        };
-
-        let exec = {
-            let entrypoint_lex = match &self.entrypoint {
-                Some(e) => {
-                    if !e.is_empty() {
-                        e.as_str()
-                    } else {
-                        default_entrypoint
-                    }
-                }
-                None => default_entrypoint,
-            };
-
-            let entrypoint_split = {
-                let mut s = shlex::split(entrypoint_lex).unwrap();
-
-                match args {
-                    Some(a) => {
-                        s.push(a.to_owned());
-                        s
-                    }
-                    None => s,
-                }
-            };
-
-            let entrypoint = &entrypoint_split[0];
-            let nargs = entrypoint_split[1..]
-                .iter()
-                .filter(|s| !s.is_empty())
-                .cloned()
-                .collect::<Vec<String>>();
-
-            self.log_debug(format!(
-                "EXEC: {} {:?} at {:?}",
-                entrypoint_lex, nargs, self.cwd
-            ));
-            self.console.do_send(PanelStatus {
-                panel_name: self.op_name.clone(),
-                status: None,
-            });
-
-            Exec::cmd(entrypoint).args(&nargs)
-        };
-
-        let mut p = exec
-            .cwd(&self.cwd)
-            .env_extend(&self.env)
+        let mut p = self
+            .exec_builder
+            .build()
+            .unwrap()
             .stdout(Redirection::Pipe)
             .stderr(Redirection::Merge)
             .popen()
@@ -413,13 +323,13 @@ impl CommandActor {
         let reader = BufReader::new(stdout);
 
         let console = self.console.clone();
-        let op_name = self.op_name.clone();
+        let op_name = self.operator.name.clone();
         let self_addr = self.self_addr.clone();
         let started_at = Local::now();
-        let cwd = self.cwd.clone();
+        let cwd = self.operator.cwd.clone();
         let watcher = self.watcher.clone();
-        let task_pipes = self.pipes.clone();
-        let task_colors = self.colors.clone();
+        let task_pipes = self.operator.pipes.clone();
+        let task_colors = self.operator.colors.clone();
 
         let fut = async move {
             for line in reader.lines() {
@@ -440,7 +350,7 @@ impl CommandActor {
                                 console.do_send(RegisterPanel {
                                     name: tab_name.to_owned(),
                                     addr: addr.clone(),
-                                    colors: task_colors.clone()
+                                    colors: task_colors.clone(),
                                 });
                             }
                             console.do_send(Output::now(tab_name.to_owned(), line.clone(), false));
@@ -500,7 +410,7 @@ impl CommandActor {
                 Child::Exited(val) => *val,
                 child => panic!("invalid death invite acceptance: {child:?}"),
             };
-            invite.rsvp::<Self, Context<Self>>(self.op_name.clone(), status, cx);
+            invite.rsvp::<Self, Context<Self>>(self.operator.name.clone(), status, cx);
         }
     }
 }
@@ -513,19 +423,20 @@ impl Actor for CommandActor {
         self.self_addr = Some(addr.clone());
 
         self.console.do_send(RegisterPanel {
-            name: self.op_name.clone(),
+            name: self.operator.name.clone(),
             addr,
-            colors: self.colors.clone()
+            colors: self.operator.colors.clone(),
         });
 
-        let watches = self.operator.watch.resolve();
+        let watches = self.operator.task.watch.resolve();
 
         if self.watch && !watches.is_empty() {
             let mut on = GlobSetBuilder::new();
-            for pattern in self.operator.watch.resolve() {
+            for pattern in watches {
                 on.add(
                     Glob::new(
                         &self
+                            .operator
                             .cwd
                             .join(pattern)
                             .absolutize()
@@ -537,10 +448,11 @@ impl Actor for CommandActor {
             }
 
             let mut off = GlobSetBuilder::new();
-            for pattern in self.operator.ignore.resolve() {
+            for pattern in self.operator.task.ignore.resolve() {
                 off.add(
                     Glob::new(
                         &self
+                            .operator
                             .cwd
                             .join(pattern)
                             .absolutize()
@@ -704,7 +616,7 @@ impl Handler<StdoutTerminated> for CommandActor {
             }
             let exit = self.child.exit_status();
             self.console.do_send(PanelStatus {
-                panel_name: self.op_name.clone(),
+                panel_name: self.operator.name.clone(),
                 status: exit,
             });
             self.accept_death_invite(cx);
@@ -736,7 +648,7 @@ impl Handler<PermaDeathInvite> for CommandActor {
             _ => None,
         };
         if let Some(status) = status {
-            evt.rsvp::<Self, Self::Context>(self.op_name.clone(), status, cx);
+            evt.rsvp::<Self, Self::Context>(self.operator.name.clone(), status, cx);
         } else {
             self.death_invite = Some(evt);
         }

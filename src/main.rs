@@ -9,12 +9,15 @@ use semver::Version;
 use std::eprintln;
 use tokio::time::{sleep, Duration as TokioDuration};
 use whiz::actors::command::CommandActorsBuilder;
+use whiz::config::ops;
+use whiz::config::ConfigBuilder;
+use whiz::serial_mode;
+use whiz::utils::find_config_path;
 use whiz::{
     actors::{console::ConsoleActor, watcher::WatcherActor},
     args::Command,
     config::Config,
     global_config::GlobalConfig,
-    utils::recurse_config_file,
 };
 mod graph;
 
@@ -103,7 +106,7 @@ fn main() -> Result<()> {
         run(args).await.unwrap_or_else(|e| {
             eprintln!("{}", e);
             System::current().stop_with_code(1);
-        })
+        });
     });
 
     let code = system.run_with_code()?;
@@ -124,72 +127,71 @@ async fn run(args: Args) -> Result<()> {
         .await
         .unwrap_or_else(|e| eprintln!("cannot check for update: {}", e));
 
-    let (config_file, config_path) =
-        recurse_config_file(&args.file).map_err(|err| anyhow!("file error: {}", err))?;
+    let config = ConfigBuilder::new(find_config_path(
+        &std::env::current_dir().unwrap(),
+        &args.file,
+    )?)
+    .build()?;
 
-    let mut config =
-        Config::from_file(&config_file).map_err(|err| anyhow!("config error: {}", err))?;
+    let Some(command) = args.command.as_ref() else {
+        return start_default_mode(config, args).await;
+    };
 
-    let pipes_map = config
-        .get_pipes_map()
-        .map_err(|err| anyhow!("dag error: {}", err))?;
+    match command {
+        Command::Upgrade(_) => {
+            unreachable!();
+        }
 
-    let colors_map = config
-        .get_colors_map()
-        .map_err(|err| anyhow!("colors error: {}", err))?;
+        Command::ListJobs => {
+            let formatted_list_of_jobs = ops::get_formatted_list_of_jobs(&config.ops);
+            println!("List of jobs:\n{formatted_list_of_jobs}");
+            System::current().stop_with_code(0);
+            return Ok(());
+        }
 
-    config
-        .filter_jobs(&args.run)
-        .map_err(|err| anyhow!("argument error: {}", err))?;
+        Command::Graph(opts) => {
+            let filtered_tasks: Vec<graph::Task> = config
+                .ops
+                .iter()
+                .map(|task| graph::Task {
+                    name: task.0.to_owned(),
+                    depends_on: task.1.depends_on.resolve(),
+                })
+                .collect();
 
-    if let Some(Command::ListJobs) = args.command {
-        let formatted_list_of_jobs = config.get_formatted_list_of_jobs();
-        println!("List of jobs:\n{formatted_list_of_jobs}");
-        return Ok(());
+            match graph::draw_graph(filtered_tasks, opts.boxed)
+                .map_err(|err| anyhow!("Error visualizing graph: {}", err))
+            {
+                Result::Ok(..) => {
+                    System::current().stop_with_code(0);
+                    return Ok(());
+                }
+                Err(e) => {
+                    System::current().stop_with_code(1);
+                    return Err(e);
+                }
+            };
+        }
+
+        Command::Execute(opts) => {
+            serial_mode::start(opts, config).await?;
+            System::current().stop_with_code(0);
+            return Ok(());
+        }
     }
+}
 
-    if let Some(Command::Graph(opts)) = args.command {
-        let filtered_tasks: Vec<graph::Task> = config
-            .ops
-            .into_iter()
-            .map(|task| graph::Task {
-                name: task.0.to_owned(),
-                depends_on: task.1.depends_on.resolve(),
-            })
-            .collect();
-
-        match graph::draw_graph(filtered_tasks, opts.boxed)
-            .map_err(|err| anyhow!("Error visualizing graph: {}", err))
-        {
-            Result::Ok(..) => {
-                System::current().stop_with_code(0);
-                return Ok(());
-            }
-            Err(e) => {
-                System::current().stop_with_code(1);
-                return Err(e);
-            }
-        };
-    }
-
-    let base_dir = config_path.parent().unwrap().to_path_buf();
-
+async fn start_default_mode(config: Config, args: Args) -> Result<()> {
     let console =
         ConsoleActor::new(Vec::from_iter(config.ops.keys().cloned()), args.timestamp).start();
-    let watcher = WatcherActor::new(base_dir.clone()).start();
-    let cmds = CommandActorsBuilder::new(
-        config,
-        console.clone(),
-        watcher,
-        base_dir.clone(),
-        colors_map,
-    )
-    .verbose(args.verbose)
-    .pipes_map(pipes_map)
-    .globally_enable_watch(if args.exit_after { false } else { args.watch })
-    .build()
-    .await
-    .map_err(|err| anyhow!("error spawning commands: {}", err))?;
+    let watcher = WatcherActor::new(config.base_dir.clone()).start();
+
+    let cmds = CommandActorsBuilder::new(config, console.clone(), watcher)
+        .verbose(args.verbose)
+        .globally_enable_watch(if args.exit_after { false } else { args.watch })
+        .build()
+        .await
+        .map_err(|err| anyhow!("error spawning commands: {}", err))?;
 
     if args.exit_after {
         whiz::actors::grim_reaper::GrimReaperActor::start_new(cmds).await?;

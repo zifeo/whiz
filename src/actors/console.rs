@@ -188,7 +188,7 @@ impl ConsoleActor {
         self.terminal
             .draw(|f| {
                 let clean =
-                    Block::default().style(Style::default().bg(Color::White).fg(Color::Black));
+                    Block::default().style(Style::default().fg(Color::Black));
                 f.render_widget(clean, f.size());
             })
             .unwrap();

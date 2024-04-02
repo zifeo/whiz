@@ -304,7 +304,7 @@ impl CommandActor {
     }
 
     fn reload(&mut self) -> Result<()> {
-        self.log_debug(self.exec_builder.to_string());
+        self.log_debug(self.exec_builder.as_string());
         self.console.do_send(PanelStatus {
             panel_name: self.operator.name.clone(),
             status: None,

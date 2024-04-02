@@ -1,7 +1,6 @@
 use actix::prelude::*;
 use chrono::prelude::*;
 use crossterm::event::KeyEvent;
-use ratatui::backend::Backend;
 use ratatui::layout::Rect;
 use ratatui::prelude::Alignment;
 use ratatui::text::Line;
@@ -98,7 +97,7 @@ pub struct ConsoleActor {
     list_state: ListState,
 }
 
-fn chunks<T: Backend>(mode: &AppMode, direction: &LayoutDirection, f: &Frame<T>) -> Rc<[Rect]> {
+fn chunks(mode: &AppMode, direction: &LayoutDirection, f: &Frame) -> Rc<[Rect]> {
     let chunks_constraints = match mode {
         AppMode::Menu => match direction {
             LayoutDirection::Horizontal => vec![Constraint::Min(0), Constraint::Length(3)],
@@ -187,8 +186,7 @@ impl ConsoleActor {
     fn clean(&mut self) {
         self.terminal
             .draw(|f| {
-                let clean =
-                    Block::default().style(Style::default().fg(Color::Black));
+                let clean = Block::default().style(Style::default().fg(Color::Black));
                 f.render_widget(clean, f.size());
             })
             .unwrap();

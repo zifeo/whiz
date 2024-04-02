@@ -49,8 +49,7 @@ pub async fn start(opts: &Execute, config: Config) -> Result<()> {
                 .unwrap()
                 .stdout(subprocess::Redirection::None)
                 .stderr(subprocess::Redirection::None);
-            let exit_status = exec.join().unwrap();
-            return exit_status;
+            exec.join().unwrap()
         })
         .await?;
 

@@ -2,7 +2,7 @@ use std::{fmt::Display, rc::Rc};
 
 use crossterm::event::KeyCode;
 use ratatui::{
-    prelude::{Backend, Constraint, Layout, Rect},
+    prelude::{Constraint, Layout, Rect},
     widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
     Frame,
 };
@@ -76,24 +76,26 @@ pub fn update(model: &mut Model, msg: Message) -> Option<Message> {
             model.horizontal_scroll = model.horizontal_scroll.saturating_add(5);
             model.horizontal_scroll_state = model
                 .horizontal_scroll_state
-                .position(model.horizontal_scroll);
+                .position(model.horizontal_scroll.into());
         }
         ScrollLeft => {
             model.horizontal_scroll = model.horizontal_scroll.saturating_sub(5);
             model.horizontal_scroll_state = model
                 .horizontal_scroll_state
-                .position(model.horizontal_scroll);
+                .position(model.horizontal_scroll.into());
         }
         ScrollUp => {
             model.vertical_scroll = model.vertical_scroll.saturating_sub(5);
-            model.vertical_scroll_state =
-                model.vertical_scroll_state.position(model.vertical_scroll);
+            model.vertical_scroll_state = model
+                .vertical_scroll_state
+                .position(model.vertical_scroll.into());
         }
 
         ScrollDown => {
             model.vertical_scroll = model.vertical_scroll.saturating_add(5);
-            model.vertical_scroll_state =
-                model.vertical_scroll_state.position(model.vertical_scroll);
+            model.vertical_scroll_state = model
+                .vertical_scroll_state
+                .position(model.vertical_scroll.into());
         }
         Quit => model.should_quit = true,
     }
@@ -102,11 +104,7 @@ pub fn update(model: &mut Model, msg: Message) -> Option<Message> {
 
 pub struct Drawer {}
 impl Drawer {
-    fn render_indipendent_tasks<B: Backend>(
-        frame: &mut Frame<B>,
-        chunks: Rc<[Rect]>,
-        model: &mut Model,
-    ) {
+    fn render_indipendent_tasks(frame: &mut Frame, chunks: Rc<[Rect]>, model: &mut Model) {
         frame.render_widget(
             Paragraph::new(model.indipendent_tasks.as_str())
                 .block(
@@ -121,11 +119,7 @@ impl Drawer {
         );
     }
 
-    fn render_dependency_graph<B: Backend>(
-        frame: &mut Frame<B>,
-        chunks: Rc<[Rect]>,
-        model: &mut Model,
-    ) {
+    fn render_dependency_graph(frame: &mut Frame, chunks: Rc<[Rect]>, model: &mut Model) {
         frame.render_widget(
             Paragraph::new(model.graph_string_representation.to_owned())
                 .block(
@@ -139,11 +133,7 @@ impl Drawer {
         );
     }
 
-    pub fn render_scrollbar<B: Backend>(
-        model: &mut Model,
-        frame: &mut Frame<B>,
-        chunks: Rc<[Rect]>,
-    ) {
+    pub fn render_scrollbar(model: &mut Model, frame: &mut Frame, chunks: Rc<[Rect]>) {
         frame.render_stateful_widget(
             Scrollbar::default().orientation(ScrollbarOrientation::HorizontalTop),
             chunks[1],
@@ -157,14 +147,14 @@ impl Drawer {
         );
     }
 
-    pub fn get_layout<T: Backend>(frame: &Frame<T>) -> Rc<[Rect]> {
+    pub fn get_layout(frame: &Frame) -> Rc<[Rect]> {
         Layout::default()
             .direction(ratatui::prelude::Direction::Vertical)
             .constraints(vec![Constraint::Length(5), Constraint::Min(0)])
             .split(frame.size())
     }
 
-    pub fn draw<B: Backend>(model: &mut Model, frame: &mut Frame<B>) {
+    pub fn draw(model: &mut Model, frame: &mut Frame) {
         let chunks = Self::get_layout(frame);
         Self::render_scrollbar(model, frame, chunks.clone());
         Self::render_dependency_graph(frame, chunks.clone(), model);

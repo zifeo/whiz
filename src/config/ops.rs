@@ -130,8 +130,8 @@ pub fn filter_jobs(ops: &mut Ops, run: &[String]) -> Result<()> {
 
     if !run.is_empty() {
         let mut filtered_jobs = get_all_dependencies(ops, run);
-        filtered_jobs.extend(run.to_vec().into_iter());
-        let filtered_jobs: HashSet<String> = HashSet::from_iter(filtered_jobs.into_iter());
+        filtered_jobs.extend(run.iter().cloned());
+        let filtered_jobs: HashSet<String> = HashSet::from_iter(filtered_jobs);
         *ops = ops
             .clone()
             .into_iter()

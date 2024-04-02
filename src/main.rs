@@ -146,7 +146,7 @@ async fn run(args: Args) -> Result<()> {
             let formatted_list_of_jobs = ops::get_formatted_list_of_jobs(&config.ops);
             println!("List of jobs:\n{formatted_list_of_jobs}");
             System::current().stop_with_code(0);
-            return Ok(());
+            Ok(())
         }
 
         Command::Graph(opts) => {
@@ -164,19 +164,19 @@ async fn run(args: Args) -> Result<()> {
             {
                 Result::Ok(..) => {
                     System::current().stop_with_code(0);
-                    return Ok(());
+                    Ok(())
                 }
                 Err(e) => {
                     System::current().stop_with_code(1);
-                    return Err(e);
+                    Err(e)
                 }
-            };
+            }
         }
 
         Command::Execute(opts) => {
             serial_mode::start(opts, config).await?;
             System::current().stop_with_code(0);
-            return Ok(());
+            Ok(())
         }
     }
 }

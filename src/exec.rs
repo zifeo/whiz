@@ -53,7 +53,7 @@ impl ExecBuilder {
             .env_extend(&self.env))
     }
 
-    pub fn to_string(&self) -> String {
+    pub fn as_string(&self) -> String {
         format!("EXEC: {} {:?} at {:?}", self.cmd, self.args, self.cwd)
     }
 }
@@ -62,7 +62,7 @@ impl ConfigInner {
     pub async fn get_shared_env(&self) -> Result<HashMap<String, String>> {
         let mut shared_env = HashMap::from_iter(std::env::vars());
         shared_env.extend(lade_sdk::resolve(&self.env, &shared_env)?);
-        return lade_sdk::hydrate(shared_env, self.base_dir.to_path_buf()).await;
+        lade_sdk::hydrate(shared_env, self.base_dir.to_path_buf()).await
     }
 }
 

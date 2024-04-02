@@ -76,9 +76,7 @@ impl<'b> Colorizer<'b> {
     /// Returns vector of patched lines.
     ///
     pub fn patch_text<'a>(&self, str: &'a str) -> Vec<Line<'a>> {
-        let mut text = str.into_text().unwrap();
-
-        text.patch_style(self.base_style);
+        let text = str.into_text().unwrap().patch_style(self.base_style);
 
         if self.colors.is_empty() {
             // We don't have color options.

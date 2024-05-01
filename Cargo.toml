@@ -8,8 +8,8 @@ license = "MPL-2.0"
 [dependencies]
 actix = "0.13.3"
 ansi-to-tui = "4.0.1"
-anyhow = "1.0.81"
-chrono = { version = "0.4.37", features = ["serde"] }
+anyhow = "1.0.82"
+chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.4", features = ["derive"] }
 crossterm = "0.27.0"
 directories = "5.0.1"
@@ -18,13 +18,13 @@ globset = "0.4.14"
 ignore = "0.4.22"
 indexmap = { version = "2.2.6", features = ["serde"] }
 # lade-sdk = { path = "../../github/lade/sdk"}
-lade-sdk = "0.10.0"
+lade-sdk = "0.11.1"
 openssl = { version = "0.10.64", features = ["vendored"] }
 notify = "6.1.1"
 path-absolutize = "3.1.1"
 path-clean = "1.0.1"
 regex = "1.10.4"
-self_update = { version = "0.39.0", features = [
+self_update = { version = "0.40.0", features = [
   "archive-tar",
   "archive-zip",
   "compression-flate2",
@@ -37,7 +37,7 @@ strip-ansi-escapes = "0.2.0"
 subprocess = "0.2.9"
 textwrap = "0.16.1"
 tokio = { version = "1.37.0", features = ["full"] }
-ratatui = "0.26.1"
+ratatui = "0.26.2"
 url = "2.5.0"
 assert_cmd = "2.0.14"
 semver = "1.0.22"

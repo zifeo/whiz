@@ -382,9 +382,9 @@ mod tests {
         #[test]
         fn filters_jobs() {
             let mut config: RawConfig = CONFIG_EXAMPLE.parse().unwrap();
-            let run = &vec!["test".to_string()];
+            let run = ["test".to_string()];
 
-            config.filter_jobs(run).unwrap();
+            config.filter_jobs(&run).unwrap();
 
             let jobs: Vec<_> = config.ops.iter().map(|(job_name, _)| job_name).collect();
             let expected_jobs = vec!["test", "test_dependency"];
@@ -396,7 +396,7 @@ mod tests {
         fn fails_job_filtering() {
             let mut config: RawConfig = CONFIG_EXAMPLE.parse().unwrap();
 
-            let expected_err = vec![
+            let expected_err = [
                 "job 'doesnt_exist' not found in config file.",
                 "",
                 "Valid jobs are:",
@@ -407,9 +407,9 @@ mod tests {
             .join("\n");
 
             let mut err_message = String::new();
-            let run = &vec!["doesnt_exist".to_string()];
+            let run = ["doesnt_exist".to_string()];
 
-            if let Err(err) = config.filter_jobs(run) {
+            if let Err(err) = config.filter_jobs(&run) {
                 err_message = err.to_string();
             };
 

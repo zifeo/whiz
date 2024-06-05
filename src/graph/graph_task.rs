@@ -151,7 +151,7 @@ mod helpers_tests {
         let task_vec: Vec<Task> = Task::from_formatted(input);
 
         assert_eq!(
-            Task::split_tasks(&task_vec).0.get(0).unwrap(),
+            Task::split_tasks(&task_vec).0.first().unwrap(),
             &task_vec.get(2).unwrap()
         )
     }
@@ -180,7 +180,7 @@ mod helpers_tests {
         assert_eq!(
             dependent_tasks,
             vec![
-                tasks.get(0).unwrap(),
+                tasks.first().unwrap(),
                 tasks.get(1).unwrap(),
                 tasks.get(3).unwrap()
             ]

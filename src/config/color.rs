@@ -59,6 +59,37 @@ impl PartialEq for ColorOption {
     }
 }
 
+lazy_static::lazy_static! {
+    static ref COLOR_OPTIONS: Vec<ColorOption> = vec![
+        ColorOption::from(("GET", "green")).unwrap(),
+        ColorOption::from(("POST", "#FFA500")).unwrap(),
+        ColorOption::from(("PUT", "#800080")).unwrap(),
+        ColorOption::from(("PATCH", "#800080")).unwrap(),
+        ColorOption::from(("DELETE", "red")).unwrap(),
+        ColorOption::from(("ERROR", "red")).unwrap(),
+        ColorOption::from(("RELOAD", "#800080")).unwrap(),
+        ColorOption::from((
+            r"(?x)
+            \b
+            \d+
+            (\.
+            \d+
+            )?
+            \b",
+            "cyan",
+        )).unwrap(), // digits
+        ColorOption::from((
+            r"(?x)
+                (?P<path>
+                    [~/.][\w./-]*
+                    /[\w.-]*
+                )",
+            "green",
+        )).unwrap(), // paths
+        ColorOption::from((r"https?://[^\s]+", "blue")).unwrap(), // https
+    ];
+}
+
 pub struct Colorizer<'b> {
     colors: &'b Vec<ColorOption>,
     base_style: Style,
@@ -78,44 +109,15 @@ impl<'b> Colorizer<'b> {
     pub fn patch_text<'a>(&self, str: &'a str) -> Vec<Line<'a>> {
         let text = str.into_text().unwrap().patch_style(self.base_style);
 
-        let mut color_options = vec![
-            ColorOption::from(("GET", "green")).unwrap(),
-            ColorOption::from(("POST", "#FFA500")).unwrap(),
-            ColorOption::from(("PUT", "#800080")).unwrap(),
-            ColorOption::from(("PATCH", "#800080")).unwrap(),
-            ColorOption::from(("DELETE", "red")).unwrap(),
-            ColorOption::from(("ERROR", "red")).unwrap(),
-            ColorOption::from(("RELOAD", "#800080")).unwrap(),
-            ColorOption::from((
-                r"(?x)
-                \b
-                \d+
-                (\.
-                \d+
-                )?
-                \b",
-                "cyan",
-            ))
-            .unwrap(),
-            ColorOption::from((
-                r"(?x)
-                    (?P<path>
-                        [~/.][\w./-]*
-                        /[\w.-]*
-                    )",
-                "green",
-            ))
-            .unwrap(),
-            ColorOption::from((r"https?://[^\s]+", "blue")).unwrap(), // https
-        ];
-        color_options.extend(self.colors.clone());
+        let mut colors = self.colors.to_owned();
+        colors.extend_from_slice(&COLOR_OPTIONS);
 
         text.lines
             .iter()
             .map(|line| {
                 let mut styled_line = line.clone();
                 let pure_str = Colorizer::line_as_string(line);
-                for opt in color_options.iter() {
+                for opt in colors.iter().rev() {
                     styled_line =
                         self.merge_lines(&styled_line, &self.apply_color_option(&pure_str, opt));
                 }

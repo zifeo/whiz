@@ -174,12 +174,14 @@ impl ConsoleActor {
     }
 
     pub fn next(&mut self) {
-        self.index.clone_from(&self.order[(self.idx() + 1) % self.order.len()]);
+        self.index
+            .clone_from(&self.order[(self.idx() + 1) % self.order.len()]);
         self.list_state.select(Some(self.idx()))
     }
 
     pub fn previous(&mut self) {
-        self.index.clone_from(&self.order[(self.idx() + self.order.len() - 1) % self.order.len()]);
+        self.index
+            .clone_from(&self.order[(self.idx() + self.order.len() - 1) % self.order.len()]);
         self.list_state.select(Some(self.idx()))
     }
 

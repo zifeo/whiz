@@ -178,7 +178,7 @@ impl RawConfig {
             let task_color_options: Vec<ColorOption> = task
                 .color
                 .iter()
-                .filter_map(|color_config| ColorOption::from(color_config).ok())
+                .filter_map(|(r, c)| ColorOption::from((&r, &c)).ok())
                 .collect();
 
             colors.insert(task_name.to_owned(), task_color_options);

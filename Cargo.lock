@@ -2977,6 +2977,7 @@ dependencies = [
  "ignore",
  "indexmap",
  "lade-sdk",
+ "lazy_static",
  "notify",
  "openssl",
  "path-absolutize",

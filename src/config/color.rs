@@ -109,15 +109,14 @@ impl<'b> Colorizer<'b> {
     pub fn patch_text<'a>(&self, str: &'a str) -> Vec<Line<'a>> {
         let text = str.into_text().unwrap().patch_style(self.base_style);
 
-        let mut colors = self.colors.to_owned();
-        colors.extend_from_slice(&COLOR_OPTIONS);
+        let colors = self.colors.iter().chain(COLOR_OPTIONS.iter());
 
         text.lines
             .iter()
             .map(|line| {
                 let mut styled_line = line.clone();
                 let pure_str = Colorizer::line_as_string(line);
-                for opt in colors.iter().rev() {
+                for opt in colors.clone().rev() {
                     styled_line =
                         self.merge_lines(&styled_line, &self.apply_color_option(&pure_str, opt));
                 }

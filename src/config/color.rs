@@ -15,7 +15,7 @@ impl ColorOption {
         Self { regex, color }
     }
 
-    pub fn from(color_config: (&String, &String)) -> anyhow::Result<Self> {
+    pub fn from(color_config: (&str, &str)) -> anyhow::Result<Self> {
         let (regex, color_str) = color_config;
         let regex = Regex::new(regex)?;
         let color = ColorOption::parse_color(color_str)?;
@@ -59,6 +59,37 @@ impl PartialEq for ColorOption {
     }
 }
 
+lazy_static::lazy_static! {
+    static ref COLOR_OPTIONS: Vec<ColorOption> = vec![
+        ColorOption::from(("GET", "green")).unwrap(),
+        ColorOption::from(("POST", "#FFA500")).unwrap(),
+        ColorOption::from(("PUT", "#800080")).unwrap(),
+        ColorOption::from(("PATCH", "#800080")).unwrap(),
+        ColorOption::from(("DELETE", "red")).unwrap(),
+        ColorOption::from(("ERROR", "red")).unwrap(),
+        ColorOption::from(("RELOAD", "#800080")).unwrap(),
+        ColorOption::from((
+            r"(?x)
+            \b
+            \d+
+            (\.
+            \d+
+            )?
+            \b",
+            "cyan",
+        )).unwrap(), // digits
+        ColorOption::from((
+            r"(?x)
+                (?P<path>
+                    [~/.][\w./-]*
+                    /[\w.-]*
+                )",
+            "green",
+        )).unwrap(), // paths
+        ColorOption::from((r"https?://[^\s]+", "blue")).unwrap(), // https
+    ];
+}
+
 pub struct Colorizer<'b> {
     colors: &'b Vec<ColorOption>,
     base_style: Style,
@@ -78,19 +109,14 @@ impl<'b> Colorizer<'b> {
     pub fn patch_text<'a>(&self, str: &'a str) -> Vec<Line<'a>> {
         let text = str.into_text().unwrap().patch_style(self.base_style);
 
-        if self.colors.is_empty() {
-            // We don't have color options.
-            // Just return base-styled lines.
-            return text.lines;
-        }
+        let colors = COLOR_OPTIONS.iter().chain(self.colors);
 
-        // Iterate over lines and patch them one-by-one
         text.lines
             .iter()
             .map(|line| {
                 let mut styled_line = line.clone();
                 let pure_str = Colorizer::line_as_string(line);
-                for opt in self.colors {
+                for opt in colors.clone() {
                     styled_line =
                         self.merge_lines(&styled_line, &self.apply_color_option(&pure_str, opt));
                 }

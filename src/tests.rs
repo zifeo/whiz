@@ -63,7 +63,7 @@ fn end_to_end() {
 
 fn config_from_str(s: &str) -> Result<Config> {
     let raw: RawConfig = s.parse()?;
-    Ok(Arc::new(ConfigInner::from_raw(raw, env::current_dir()?)?).into())
+    Ok(Arc::new(ConfigInner::from_raw(raw, env::current_dir()?)?))
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn hello() {
             .await?;
 
         let status = commands
-            .get(&"test".to_string())
+            .get("test")
             .unwrap()
             .send(WaitStatus)
             .await?;

@@ -25,7 +25,7 @@ use crate::config::{
 };
 use crate::exec::ExecBuilder;
 
-use super::console::{Output, PanelStatus, RegisterPanel};
+use super::console::{Output, OutputKind, PanelStatus, RegisterPanel};
 use super::watcher::{IgnorePath, WatchGlob};
 
 #[cfg(not(test))]
@@ -265,7 +265,8 @@ impl CommandActor {
     fn log_info(&self, log: String) {
         let job_name = self.operator.name.clone();
 
-        self.console.do_send(Output::now(job_name, log, true));
+        self.console
+            .do_send(Output::now(job_name, log, OutputKind::Service));
     }
 
     fn log_debug(&self, log: String) {
@@ -353,7 +354,11 @@ impl CommandActor {
                                     colors: task_colors.clone(),
                                 });
                             }
-                            console.do_send(Output::now(tab_name.to_owned(), line.clone(), false));
+                            console.do_send(Output::now(
+                                tab_name.to_owned(),
+                                line,
+                                OutputKind::Command,
+                            ));
                         }
                         OutputRedirection::File(path) => {
                             let path = task_pipe.regex.replace(&line, path);
@@ -383,11 +388,11 @@ impl CommandActor {
 
                             // append new line since strings from the buffer reader don't include it
                             line.push('\n');
-                            file.write_all(line.clone().as_bytes()).unwrap();
+                            file.write_all(line.as_bytes()).unwrap();
                         }
                     }
                 } else {
-                    console.do_send(Output::now(op_name.clone(), line.clone(), false));
+                    console.do_send(Output::now(op_name.clone(), line, OutputKind::Command));
                 }
             }
 

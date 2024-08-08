@@ -64,8 +64,8 @@ impl AppMode {
 }
 
 pub struct Panel {
-    logs: Vec<(String, Style)>,
-    lines: u16,
+    logs: Vec<(String, OutputKind)>,
+    line_offsets: Vec<usize>,
     shift: u16,
     command: Addr<CommandActor>,
     status: Option<ExitStatus>,
@@ -76,12 +76,21 @@ impl Panel {
     pub fn new(command: Addr<CommandActor>, colors: Vec<ColorOption>) -> Self {
         Self {
             logs: Vec::default(),
-            lines: 0,
+            line_offsets: Vec::default(),
             shift: 0,
             command,
             status: None,
             colors,
         }
+    }
+
+    pub fn sync_lines(&mut self, width: u16) {
+        self.line_offsets = self
+            .logs
+            .iter()
+            .enumerate()
+            .flat_map(|(i, l)| vec![i; wrapped_lines(&l.0, width)])
+            .collect();
     }
 }
 
@@ -138,7 +147,8 @@ impl ConsoleActor {
         if let Some(focused_panel) = self.panels.get_mut(&self.index) {
             // maximum_scroll is the number of lines
             // overflowing in the current focused panel
-            let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
+            let lines = focused_panel.line_offsets.len() as u16;
+            let maximum_scroll = lines - min(lines, log_height);
 
             // `focused_panel.shift` goes from 0 until maximum_scroll
             focused_panel.shift = min(focused_panel.shift + shift, maximum_scroll);
@@ -201,23 +211,45 @@ impl ConsoleActor {
                 .draw(|f| {
                     let chunks = chunks(&self.mode, &self.layout_direction, f);
                     let logs = &focused_panel.logs;
+                    let shift = focused_panel.shift as usize;
+                    let line_offsets = &focused_panel.line_offsets;
+                    let lines = line_offsets.len();
+                    let log_height = chunks[0].height as usize;
 
-                    let log_height = chunks[0].height;
-                    let maximum_scroll = focused_panel.lines - min(focused_panel.lines, log_height);
+                    let maximum_scroll = lines - min(lines, log_height);
+                    let scroll_offset = maximum_scroll - min(maximum_scroll, shift);
+                    let offset_end = min(lines, scroll_offset + log_height).wrapping_sub(1);
 
-                    let lines: Vec<Line> = logs
-                        .iter()
-                        .flat_map(|(str, base_style)| {
-                            let colorizer = Colorizer::new(&focused_panel.colors, *base_style);
-                            colorizer.patch_text(str)
+                    let line_start = line_offsets.get(scroll_offset).cloned().unwrap_or(0);
+                    let line_end = line_offsets.get(offset_end).cloned().unwrap_or(0);
+
+                    let wrap_offset = line_offsets
+                        .get(..scroll_offset)
+                        .map(|offsets| {
+                            offsets
+                                .iter()
+                                .rev()
+                                .take_while(|&line| *line == line_start)
+                                .count()
                         })
-                        .collect();
+                        .unwrap_or(0);
 
-                    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+                    let lines = logs
+                        .get(line_start..=line_end)
+                        .map(|logs| {
+                            logs.iter()
+                                .flat_map(|(s, kind)| {
+                                    Colorizer::new(&focused_panel.colors, kind.style())
+                                        .patch_text(s)
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
 
-                    // scroll by default until the last line
-                    let paragraph = paragraph
-                        .scroll((maximum_scroll - min(maximum_scroll, focused_panel.shift), 0));
+                    let paragraph = Paragraph::new(lines)
+                        .wrap(Wrap { trim: false })
+                        .scroll((wrap_offset as u16, 0));
+
                     f.render_widget(paragraph, chunks[0]);
 
                     //Format titles
@@ -303,8 +335,18 @@ impl ConsoleActor {
         }
     }
 
+    pub fn resize_panels(&mut self, width: u16) {
+        for panel in self.panels.values_mut() {
+            panel.shift = 0;
+            panel.sync_lines(width)
+        }
+    }
+
     pub fn switch_layout(&mut self) {
         self.layout_direction = self.layout_direction.get_opposite_orientation();
+        let f = self.terminal.get_frame();
+        let chunks = chunks(&self.mode, &self.layout_direction, &f);
+        self.resize_panels(chunks[0].width);
     }
     pub fn switch_mode(&mut self) {
         self.mode = self.mode.get_opposite_mode();
@@ -432,16 +474,7 @@ impl Handler<TermEvent> for ConsoleActor {
                 },
                 _ => {}
             },
-            Event::Resize(width, _) => {
-                for panel in self.panels.values_mut() {
-                    panel.shift = 0;
-                    let new_lines = panel
-                        .logs
-                        .iter()
-                        .fold(0, |agg, l| agg + wrapped_lines(&l.0, width));
-                    panel.lines = new_lines;
-                }
-            }
+            Event::Resize(width, _) => self.resize_panels(width),
             Event::Mouse(e) => match e.kind {
                 MouseEventKind::ScrollUp => {
                     self.up(1);
@@ -457,29 +490,44 @@ impl Handler<TermEvent> for ConsoleActor {
     }
 }
 
+#[derive(Debug)]
+pub enum OutputKind {
+    Service,
+    Command,
+}
+
+impl OutputKind {
+    fn style(&self) -> Style {
+        match self {
+            OutputKind::Service => Style::default().bg(Color::DarkGray),
+            OutputKind::Command => Style::default(),
+        }
+    }
+}
+
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct Output {
     panel_name: String,
     pub message: String,
-    service: bool,
+    kind: OutputKind,
     timestamp: DateTime<Local>,
 }
 
 impl Output {
-    pub fn now(panel_name: String, message: String, service: bool) -> Self {
+    pub fn now(panel_name: String, message: String, kind: OutputKind) -> Self {
         Self {
             panel_name,
             message,
-            service,
+            kind,
             timestamp: Local::now(),
         }
     }
 }
 
-fn wrapped_lines(message: &String, width: u16) -> u16 {
+fn wrapped_lines(message: &String, width: u16) -> usize {
     let clean = strip_ansi_escapes::strip(message);
-    textwrap::wrap(str::from_utf8(&clean).unwrap(), width as usize).len() as u16
+    textwrap::wrap(str::from_utf8(&clean).unwrap(), width as usize).len()
 }
 
 // Replace the character that are max that MAX_CHARS with an ellipse ...
@@ -502,19 +550,19 @@ impl Handler<Output> for ConsoleActor {
     type Result = ();
 
     fn handle(&mut self, msg: Output, _: &mut Context<Self>) -> Self::Result {
-        let panel = self.panels.get_mut(&msg.panel_name).unwrap();
-        let style = match msg.service {
-            true => Style::default().bg(Color::DarkGray),
-            false => Style::default(),
-        };
-
         let message = match self.timestamp {
             true => format_message(&msg.message, &msg.timestamp),
             false => msg.message,
         };
+
+        let panel = self.panels.get_mut(&msg.panel_name).unwrap();
         let width = self.terminal.get_frame().size().width;
-        panel.lines += wrapped_lines(&message, width);
-        panel.logs.push((message, style));
+        let line_count = wrapped_lines(&message, width);
+        let line_offset = panel.logs.len();
+
+        panel.line_offsets.extend(vec![line_offset; line_count]);
+        panel.logs.push((message, msg.kind));
+
         self.draw();
     }
 }
@@ -558,7 +606,7 @@ impl Handler<PanelStatus> for ConsoleActor {
 
         if let Some(message) = msg.status.map(|c| format!("Status: {:?}", c)) {
             ctx.address()
-                .do_send(Output::now(msg.panel_name, message, true));
+                .do_send(Output::now(msg.panel_name, message, OutputKind::Service));
         }
 
         self.draw();

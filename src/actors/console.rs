@@ -83,6 +83,15 @@ impl Panel {
             colors,
         }
     }
+
+    pub fn sync_lines(&mut self, width: u16) {
+        self.line_offsets = self
+            .logs
+            .iter()
+            .enumerate()
+            .flat_map(|(i, l)| vec![i; wrapped_lines(&l.0, width)])
+            .collect();
+    }
 }
 
 pub struct ConsoleActor {
@@ -326,8 +335,18 @@ impl ConsoleActor {
         }
     }
 
+    pub fn resize_panels(&mut self, width: u16) {
+        for panel in self.panels.values_mut() {
+            panel.shift = 0;
+            panel.sync_lines(width)
+        }
+    }
+
     pub fn switch_layout(&mut self) {
         self.layout_direction = self.layout_direction.get_opposite_orientation();
+        let f = self.terminal.get_frame();
+        let chunks = chunks(&self.mode, &self.layout_direction, &f);
+        self.resize_panels(chunks[0].width);
     }
     pub fn switch_mode(&mut self) {
         self.mode = self.mode.get_opposite_mode();
@@ -455,18 +474,7 @@ impl Handler<TermEvent> for ConsoleActor {
                 },
                 _ => {}
             },
-            Event::Resize(width, _) => {
-                for panel in self.panels.values_mut() {
-                    panel.shift = 0;
-                    let new_offsets = panel
-                        .logs
-                        .iter()
-                        .enumerate()
-                        .flat_map(|(i, l)| vec![i; wrapped_lines(&l.0, width)])
-                        .collect();
-                    panel.line_offsets = new_offsets;
-                }
-            }
+            Event::Resize(width, _) => self.resize_panels(width),
             Event::Mouse(e) => match e.kind {
                 MouseEventKind::ScrollUp => {
                     self.up(1);

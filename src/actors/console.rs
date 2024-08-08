@@ -211,23 +211,35 @@ impl ConsoleActor {
                     let scroll_offset = maximum_scroll - min(maximum_scroll, shift);
                     let offset_end = min(lines, scroll_offset + log_height).wrapping_sub(1);
 
-                    let start_line = line_offsets.get(scroll_offset).cloned().unwrap_or(0);
-                    let end_line = line_offsets.get(offset_end).cloned().unwrap_or(0);
+                    let line_start = line_offsets.get(scroll_offset).cloned().unwrap_or(0);
+                    let line_end = line_offsets.get(offset_end).cloned().unwrap_or(0);
 
-                    let lines: Vec<Line> =
-                        logs.iter()
-                            .enumerate()
-                            .flat_map(|(i, (str, kind))| match i >= start_line && i <= end_line {
-                                true => Colorizer::new(&focused_panel.colors, kind.style())
-                                    .patch_text(str),
-                                false => vec![Line::from(str.as_str())],
-                            })
-                            .collect();
+                    let wrap_offset = line_offsets
+                        .get(..scroll_offset)
+                        .map(|offsets| {
+                            offsets
+                                .iter()
+                                .rev()
+                                .take_while(|&line| *line == line_start)
+                                .count()
+                        })
+                        .unwrap_or(0);
 
-                    // scroll by default until the last line
+                    let lines = logs
+                        .get(line_start..=line_end)
+                        .map(|logs| {
+                            logs.iter()
+                                .flat_map(|(s, kind)| {
+                                    Colorizer::new(&focused_panel.colors, kind.style())
+                                        .patch_text(s)
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+
                     let paragraph = Paragraph::new(lines)
                         .wrap(Wrap { trim: false })
-                        .scroll((scroll_offset as u16, 0));
+                        .scroll((wrap_offset as u16, 0));
 
                     f.render_widget(paragraph, chunks[0]);
 

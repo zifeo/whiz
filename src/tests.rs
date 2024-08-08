@@ -7,7 +7,7 @@ use anyhow::{Ok, Result};
 use subprocess::ExitStatus;
 
 use crate::actors::command::{CommandActorsBuilder, WaitStatus};
-use crate::actors::console::RegisterPanel;
+use crate::actors::console::{OutputKind, RegisterPanel};
 use crate::actors::watcher::WatchGlob;
 use crate::args::Args;
 use crate::config::{ConfigInner, RawConfig};
@@ -94,7 +94,7 @@ fn hello() {
             .send(Output::now(
                 "test".to_string(),
                 "message".to_string(),
-                false,
+                OutputKind::Command,
             ))
             .await?;
 
@@ -102,11 +102,7 @@ fn hello() {
             .build()
             .await?;
 
-        let status = commands
-            .get("test")
-            .unwrap()
-            .send(WaitStatus)
-            .await?;
+        let status = commands.get("test").unwrap().send(WaitStatus).await?;
         println!("status: {:?}", status);
 
         Ok(())
